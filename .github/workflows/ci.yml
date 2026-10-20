@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Ruff
+        # Config in the root pyproject.toml ([tool.ruff]). VERSION PINNED ON
+        # PURPOSE: `uvx ruff` floats to the latest release, which silently
+        # changes the gate. Bump deliberately, with the resulting diff reviewed.
+        run: uvx ruff@0.16.0 check packages integrations
+
+  workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Lock is up to date
+        run: uv lock --check
+
+      - name: Build the full workspace environment
+        # Resolves and installs every member on a clean machine, gripette
+        # included (git source, pinned in the root pyproject.toml).
+        run: uv sync --all-packages
+
+      - name: Import smoke test
+        # The OpenArm sim is validated by the build step above; importing it
+        # at runtime additionally needs system urdfdom (placo).
+        run: |
+          uv run python - <<'PY'
+          import importlib, sys
+          mods = ["grabette_dataset_tools", "grabette_dataset_tools.grasp_projection",
+                  "grabette_chunkrel", "grabette_attention", "gripette",
+                  "openarm_gripette_model"]
+          failed = []
+          for m in mods:
+              try:
+                  importlib.import_module(m)
+                  print(f"OK   {m}")
+              except Exception as e:
+                  print(f"FAIL {m}: {type(e).__name__}: {e}")
+                  failed.append(m)
+          sys.exit(1 if failed else 0)
+          PY
+
+  proto-sync:
+    # The sim's gripper.proto must stay field-for-field identical to gripette's:
+    # the eval client talks to both the sim and the real gripper over the wire.
+    # Checked against the same grabette commit the workspace pins.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare gripper.proto with grabette at the pinned commit
+        run: |
+          REV=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['uv']['sources']['gripette']['rev'])")
+          echo "grabette rev: $REV"
+          curl -fsSL "https://raw.githubusercontent.com/pollen-robotics/grabette/$REV/packages/gripette/proto/gripper.proto" \
+            -o "$RUNNER_TEMP/gripper.proto"
+          diff -u "$RUNNER_TEMP/gripper.proto" integrations/openarm/openarm_gripette_simu/proto/gripper.proto
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Dataset-tools unit tests
+        # Python 3.11 on purpose: lerobot is marker-gated to >= 3.12, so this
+        # lane installs neither lerobot nor torch. None of these tests need them.
+        run: |
+          uv sync --python 3.11 --package grabette-dataset-tools --extra test
+          uv run --no-sync --package grabette-dataset-tools pytest packages/grabette-dataset-tools/tests -q
+
+  lerobot:
+    # Guards the lerobot boundary so a dependency bump can't silently regress it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Build a lerobot venv (CPU torch)
+        # CPU-only torch via `uv pip install --torch-backend=cpu` (~200 MB); a
+        # plain workspace sync installs the CUDA wheel (~2.5 GB) — the tests use
+        # no GPU. The lerobot spec is read from the dataset-tools pyproject so the
+        # tested version tracks the pin automatically.
+        run: |
+          SPEC=$(grep -oE "lerobot\[[a-z,]*\]==[0-9.]+" packages/grabette-dataset-tools/pyproject.toml | head -1)
+          echo "Testing against: $SPEC"
+          uv venv .venv-lerobot --python 3.12
+          VIRTUAL_ENV=.venv-lerobot uv pip install --torch-backend=cpu "$SPEC" pytest pandas scipy
+
+      - name: Attention-diagnostics unit tests
+        # Two test files import torch at module scope, so they run here, in the
+        # venv that already has it. The one test needing real weights carries the
+        # `gpu` marker and the package's own addopts deselects it.
+        run: |
+          VIRTUAL_ENV=.venv-lerobot uv pip install matplotlib opencv-python-headless
+          VIRTUAL_ENV=.venv-lerobot uv pip install --no-deps ./packages/grabette-attention
+          .venv-lerobot/bin/python -m pytest packages/grabette-attention/tests -q
+
+      - name: Chunk-relative processor tests
+        # Two of its test files import lerobot at module scope. This package
+        # supplies the chunk-relative action transform that the pi0.5
+        # checkpoints' preprocessors reference by registry name, so a regression
+        # here breaks checkpoint loading rather than just a metric.
+        run: |
+          PYTHONPATH=packages/grabette-chunkrel .venv-lerobot/bin/python -m pytest \
+            packages/grabette-chunkrel/tests -q
