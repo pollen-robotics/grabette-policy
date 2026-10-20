@@ -237,7 +237,10 @@ must check the arm explicitly):
   column (shared `pedestal.py` clearance query — the same one the eval gate uses).
 
 `scenes/grabette_grasp.xml` (the free-floating grasp scene) is regenerated from the
-model by `scenes/gen_grabette_grasp.py` after a model re-export.
+grabette_right model by `scenes/gen_grabette_grasp.py` after a model re-export. The
+model lives in the grabette repo (`packages/grabette/urdf/grabette_right`; set
+`GRABETTE_RIGHT_DIR`, or keep a grabette checkout next to this repo); its meshes are
+copied into `scenes/assets/grabette_right/` — copy them again after a re-export.
 
 **Verify a collected dataset** with `examples/replay_dataset.py` (needs a display):
 

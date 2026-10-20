@@ -1,6 +1,6 @@
 <mujoco model="grabette_grasp">
   <option cone="elliptic" impratio="10" timestep="0.001" iterations="100" noslip_iterations="3" />
-  <compiler angle="radian" autolimits="true" meshdir="../../../../packages/grabette/urdf/grabette_right/assets" />
+  <compiler angle="radian" autolimits="true" meshdir="assets/grabette_right" />
   <default>
     <geom friction="2.0 0.005 0.001" />
     <default class="grabette">

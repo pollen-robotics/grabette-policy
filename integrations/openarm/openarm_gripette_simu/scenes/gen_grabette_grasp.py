@@ -12,14 +12,24 @@ mocap/freejoint reset commands the oak_l pose directly):
 Every geom/inertial is copied verbatim (each stays in its own body frame); only the
 body→body transforms come from MuJoCo FK at q=0. Collision is enabled ONLY on the
 two soft tips. Writes grabette_grasp_v2.xml (old scene untouched until verified).
+
+The grabette_right model (robot.xml) lives in the grabette repo, at
+packages/grabette/urdf/grabette_right. Point GRABETTE_RIGHT_DIR at it, or keep a
+grabette checkout next to this repo (the default). The scene loads its meshes
+from scenes/assets/grabette_right/, a copy of that model's assets/: after a
+model re-export, copy the new assets/ there too.
 """
+import os
 import xml.etree.ElementTree as ET
 import numpy as np
 import mujoco
 from pathlib import Path
 
 HERE = Path(__file__).parent
-GR = HERE.parents[3] / "packages/grabette/urdf/grabette_right"
+GR = Path(os.environ.get(
+    "GRABETTE_RIGHT_DIR",
+    HERE.parents[4] / "grabette" / "packages/grabette/urdf/grabette_right",
+))
 OLD = HERE / "grabette_grasp.xml"
 OUT = HERE / "grabette_grasp_v2.xml"
 
@@ -105,7 +115,7 @@ gripper = f'''<body name="grabette_root" pos="0.44 -0.142 0.7" quat="0 1 0 0" ch
 
 # --- splice into a copy of the old scene (keep table/cube/lights/mocap/defaults) ---
 tree = ET.parse(OLD); root = tree.getroot()
-root.find("compiler").set("meshdir", "../../../../packages/grabette/urdf/grabette_right/assets")
+root.find("compiler").set("meshdir", "assets/grabette_right")
 # rebuild <asset>: keep the wood texture + wood/red_cube materials, swap in grabette_right meshes+mats
 old_asset = root.find("asset"); src_asset = grt.find("asset")
 keep = [el for el in old_asset if (el.tag == "texture") or (el.tag == "material" and not el.get("name", "").endswith("_material"))]
