@@ -15,7 +15,7 @@ jobs:
         # Config in the root pyproject.toml ([tool.ruff]). VERSION PINNED ON
         # PURPOSE: `uvx ruff` floats to the latest release, which silently
         # changes the gate. Bump deliberately, with the resulting diff reviewed.
-        run: uvx ruff@0.16.0 check packages integrations
+        run: uvx ruff@0.16.0 check libs policies robots
 
   workspace:
     runs-on: ubuntu-latest
@@ -68,7 +68,7 @@ jobs:
           echo "grabette rev: $REV"
           curl -fsSL "https://raw.githubusercontent.com/pollen-robotics/grabette/$REV/packages/gripette/proto/gripper.proto" \
             -o "$RUNNER_TEMP/gripper.proto"
-          diff -u "$RUNNER_TEMP/gripper.proto" integrations/openarm/openarm_gripette_simu/proto/gripper.proto
+          diff -u "$RUNNER_TEMP/gripper.proto" robots/openarm/openarm_gripette_simu/proto/gripper.proto
 
   tests:
     runs-on: ubuntu-latest
@@ -83,7 +83,7 @@ jobs:
         # lane installs neither lerobot nor torch. None of these tests need them.
         run: |
           uv sync --python 3.11 --package grabette-dataset-tools --extra test
-          uv run --no-sync --package grabette-dataset-tools pytest packages/grabette-dataset-tools/tests -q
+          uv run --no-sync --package grabette-dataset-tools pytest libs/grabette-dataset-tools/tests -q
 
   lerobot:
     # Guards the lerobot boundary so a dependency bump can't silently regress it.
@@ -97,7 +97,7 @@ jobs:
         # no GPU. The lerobot spec is read from the dataset-tools pyproject so the
         # tested version tracks the pin automatically.
         run: |
-          SPEC=$(grep -oE "lerobot\[[a-z,]*\]==[0-9.]+" packages/grabette-dataset-tools/pyproject.toml | head -1)
+          SPEC=$(grep -oE "lerobot\[[a-z,]*\]==[0-9.]+" libs/grabette-dataset-tools/pyproject.toml | head -1)
           echo "Testing against: $SPEC"
           uv venv .venv-lerobot --python 3.12
           VIRTUAL_ENV=.venv-lerobot uv pip install --torch-backend=cpu "$SPEC" pytest pandas scipy
@@ -108,8 +108,8 @@ jobs:
         # `gpu` marker and the package's own addopts deselects it.
         run: |
           VIRTUAL_ENV=.venv-lerobot uv pip install matplotlib opencv-python-headless
-          VIRTUAL_ENV=.venv-lerobot uv pip install --no-deps ./packages/grabette-attention
-          .venv-lerobot/bin/python -m pytest packages/grabette-attention/tests -q
+          VIRTUAL_ENV=.venv-lerobot uv pip install --no-deps ./libs/grabette-attention
+          .venv-lerobot/bin/python -m pytest libs/grabette-attention/tests -q
 
       - name: Chunk-relative processor tests
         # Two of its test files import lerobot at module scope. This package
@@ -117,5 +117,5 @@ jobs:
         # checkpoints' preprocessors reference by registry name, so a regression
         # here breaks checkpoint loading rather than just a metric.
         run: |
-          PYTHONPATH=packages/grabette-chunkrel .venv-lerobot/bin/python -m pytest \
-            packages/grabette-chunkrel/tests -q
+          PYTHONPATH=libs/grabette-chunkrel .venv-lerobot/bin/python -m pytest \
+            libs/grabette-chunkrel/tests -q

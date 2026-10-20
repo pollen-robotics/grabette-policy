@@ -1258,7 +1258,7 @@ wheels = [
 [[package]]
 name = "grabette-attention"
 version = "0.1.0"
-source = { editable = "packages/grabette-attention" }
+source = { editable = "libs/grabette-attention" }
 dependencies = [
     { name = "numpy" },
 ]
@@ -1294,7 +1294,7 @@ provides-extras = ["png", "rerun", "test"]
 [[package]]
 name = "grabette-chunkrel"
 version = "0.1.0"
-source = { editable = "packages/grabette-chunkrel" }
+source = { editable = "libs/grabette-chunkrel" }
 dependencies = [
     { name = "numpy" },
     { name = "scipy" },
@@ -1320,7 +1320,7 @@ provides-extras = ["test"]
 [[package]]
 name = "grabette-dataset-tools"
 version = "0.1.0"
-source = { editable = "packages/grabette-dataset-tools" }
+source = { editable = "libs/grabette-dataset-tools" }
 dependencies = [
     { name = "click" },
     { name = "grabette-chunkrel" },
@@ -1341,7 +1341,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "click" },
-    { name = "grabette-chunkrel", editable = "packages/grabette-chunkrel" },
+    { name = "grabette-chunkrel", editable = "libs/grabette-chunkrel" },
     { name = "gripette", git = "https://github.com/pollen-robotics/grabette?subdirectory=packages%2Fgripette&rev=a209c431ef8f9aa1be09e9fc1bfaf16e3baafca9" },
     { name = "huggingface-hub" },
     { name = "lerobot", extras = ["dataset"], marker = "python_full_version >= '3.12'", specifier = "==0.6.0" },
@@ -2459,7 +2459,7 @@ source = { git = "https://github.com/enactic/openarm_can?subdirectory=python&tag
 [[package]]
 name = "openarm-gripette"
 version = "0.1.0"
-source = { editable = "integrations/openarm/openarm_gripette" }
+source = { editable = "robots/openarm/openarm_gripette" }
 dependencies = [
     { name = "grpcio" },
     { name = "lerobot", extra = ["damiao"], marker = "python_full_version >= '3.12'" },
@@ -2474,13 +2474,13 @@ requires-dist = [
     { name = "lerobot", extras = ["damiao"], marker = "python_full_version >= '3.12'", specifier = "==0.6.0" },
     { name = "numpy" },
     { name = "openarm-can", git = "https://github.com/enactic/openarm_can?subdirectory=python&tag=1.2.8" },
-    { name = "openarm-gripette-simu", editable = "integrations/openarm/openarm_gripette_simu" },
+    { name = "openarm-gripette-simu", editable = "robots/openarm/openarm_gripette_simu" },
 ]
 
 [[package]]
 name = "openarm-gripette-model"
 version = "0.1.0"
-source = { editable = "integrations/openarm/openarm_gripette_model" }
+source = { editable = "robots/openarm/openarm_gripette_model" }
 
 [package.optional-dependencies]
 urdf = [
@@ -2500,7 +2500,7 @@ provides-extras = ["urdf"]
 [[package]]
 name = "openarm-gripette-simu"
 version = "0.1.0"
-source = { editable = "integrations/openarm/openarm_gripette_simu" }
+source = { editable = "robots/openarm/openarm_gripette_simu" }
 dependencies = [
     { name = "grpcio" },
     { name = "mujoco" },
@@ -2535,8 +2535,8 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "grabette-chunkrel", marker = "extra == 'eval'", editable = "packages/grabette-chunkrel" },
-    { name = "grabette-dataset-tools", marker = "extra == 'eval'", editable = "packages/grabette-dataset-tools" },
+    { name = "grabette-chunkrel", marker = "extra == 'eval'", editable = "libs/grabette-chunkrel" },
+    { name = "grabette-dataset-tools", marker = "extra == 'eval'", editable = "libs/grabette-dataset-tools" },
     { name = "grpcio", specifier = ">=1.81" },
     { name = "grpcio-tools", marker = "extra == 'dev'", specifier = ">=1.60" },
     { name = "httpx", marker = "extra == 'teleop'", specifier = ">=0.27" },
@@ -2544,7 +2544,7 @@ requires-dist = [
     { name = "lerobot", extras = ["diffusion", "pi"], marker = "python_full_version >= '3.12' and extra == 'eval'", specifier = "==0.6.0" },
     { name = "mujoco", specifier = ">=3.6" },
     { name = "numpy" },
-    { name = "openarm-gripette-model", editable = "integrations/openarm/openarm_gripette_model" },
+    { name = "openarm-gripette-model", editable = "robots/openarm/openarm_gripette_model" },
     { name = "opencv-python", specifier = ">=4.9" },
     { name = "placo", specifier = ">=0.9" },
     { name = "protobuf", specifier = ">=4.25" },
