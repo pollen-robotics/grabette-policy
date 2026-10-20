@@ -1,0 +1,36 @@
+[tool.uv]
+# placo 0.9.16 (openarm sim kinematics) is linked against urdfdom 4.x and
+# tinyxml2 10.x (liburdfdom_sensor.so.4.0 / libtinyxml2.so.10). Left unconstrained,
+# the workspace resolves cmeel-urdfdom 6.x / cmeel-tinyxml2 11.x, which ship
+# .so.6 / .so.11 and break `import placo`. Pin to the versions placo expects.
+constraint-dependencies = [
+    "cmeel-urdfdom==4.0.1",
+    "cmeel-tinyxml2==10.0.0",
+]
+
+[tool.uv.workspace]
+# DiffusionPolicy and Pi05 are NOT members: each is a scripts-only project with
+# its own uv.lock (they pin different lerobot versions).
+members = ["packages/*", "integrations/openarm/*"]
+
+[tool.uv.sources]
+# The gripper's own package, from the grabette repo (the device code lives
+# there). Only its base install is used here — no `rpi` extra — for
+# gripette.config.settings (joint limits) in grabette_dataset_tools.grasp_projection.
+# Pinned to a commit: bump it deliberately, together with the proto-sync check.
+gripette = { git = "https://github.com/pollen-robotics/grabette", subdirectory = "packages/gripette", rev = "a209c431ef8f9aa1be09e9fc1bfaf16e3baafca9" }
+
+# ── Linting ──────────────────────────────────────────────────────────────
+# Same gate as the grabette repo: pyflakes F + pycodestyle E4/E7/E9.
+[tool.ruff]
+# Generated gRPC stubs are not ours to lint.
+extend-exclude = ["**/*_pb2.py", "**/*_pb2_grpc.py", "**/*_pb2.pyi"]
+
+[tool.ruff.lint]
+# Selected EXPLICITLY, not inherited from ruff's default: ruff 0.16 widened that
+# default and turned a clean gate into hundreds of style findings. CI pins the
+# ruff version too (.github/workflows/ci.yml); both are needed.
+select = ["E4", "E7", "E9", "F"]
+# E402 imports-not-at-top and F841 unused-locals are common and often
+# intentional in scripts/examples; the rest are pure style.
+ignore = ["E402", "E701", "E702", "E731", "E741", "F841"]
