@@ -14,8 +14,8 @@ import math
 
 import pytest
 
-from gripette.grasp_projection import GraspProjection
-from grabette_postprocess.grasp_projection_convert import C_CLOSE, convert_episode
+from grabette_dataset_tools.grasp_projection import GraspProjection
+from grabette_dataset_tools.grasp_projection_convert import C_CLOSE, convert_episode
 
 GP = GraspProjection()
 
@@ -163,8 +163,8 @@ def test_channels_stay_inside_the_trained_range():
 def test_the_sidecar_records_the_calibration_that_built_the_dataset(tmp_path):
     """Channel names say WHICH representation; only this says which CALIBRATION,
     and decode has to use the same limits encode did."""
-    from gripette.grasp_projection import PROJECTION_SIDECAR
-    from grabette_postprocess.grasp_projection_convert import _write_sidecar
+    from grabette_dataset_tools.grasp_projection import PROJECTION_SIDECAR
+    from grabette_dataset_tools.grasp_projection_convert import _write_sidecar
 
     root = tmp_path / "ds"
     (root / "meta").mkdir(parents=True)
@@ -177,7 +177,7 @@ def test_the_sidecar_records_the_calibration_that_built_the_dataset(tmp_path):
 
 def test_a_drifted_projection_no_longer_matches_its_own_sidecar(tmp_path):
     """The guard has to actually fire: re-measured travel must not silently pass."""
-    from gripette.grasp_projection import GraspProjection
+    from grabette_dataset_tools.grasp_projection import GraspProjection
 
     meta = GP.to_metadata()
     drifted = GraspProjection(lim_prox=GP.lim_prox, lim_dist=GP.lim_dist + 0.05)
@@ -185,7 +185,7 @@ def test_a_drifted_projection_no_longer_matches_its_own_sidecar(tmp_path):
 
 
 def test_the_card_carries_the_tags_and_the_badge(tmp_path):
-    from grabette_postprocess.grasp_projection_convert import _write_card
+    from grabette_dataset_tools.grasp_projection_convert import _write_card
 
     root = tmp_path / "ds"
     root.mkdir()
@@ -198,7 +198,7 @@ def test_the_card_carries_the_tags_and_the_badge(tmp_path):
 
 def test_the_card_is_written_without_a_badge_when_the_repo_is_unknown(tmp_path):
     """A local conversion has no repo id yet; the tags are still worth writing."""
-    from grabette_postprocess.grasp_projection_convert import _write_card
+    from grabette_dataset_tools.grasp_projection_convert import _write_card
 
     root = tmp_path / "ds"
     root.mkdir()
@@ -210,7 +210,7 @@ def test_the_card_is_written_without_a_badge_when_the_repo_is_unknown(tmp_path):
 
 def test_an_existing_card_is_never_overwritten(tmp_path):
     """A hand-written card carries more than the generated one can."""
-    from grabette_postprocess.grasp_projection_convert import _write_card
+    from grabette_dataset_tools.grasp_projection_convert import _write_card
 
     root = tmp_path / "ds"
     root.mkdir()
@@ -230,7 +230,7 @@ def test_stale_relative_stats_provenance_is_dropped(tmp_path):
     """
     import json
 
-    from grabette_postprocess.grasp_projection_convert import _drop_stale_action_stats
+    from grabette_dataset_tools.grasp_projection_convert import _drop_stale_action_stats
 
     root = tmp_path / "ds"
     (root / "meta").mkdir(parents=True)
@@ -252,7 +252,7 @@ def test_stale_relative_stats_provenance_is_dropped(tmp_path):
 def test_dropping_provenance_is_a_no_op_when_absent(tmp_path):
     import json
 
-    from grabette_postprocess.grasp_projection_convert import _drop_stale_action_stats
+    from grabette_dataset_tools.grasp_projection_convert import _drop_stale_action_stats
 
     root = tmp_path / "ds"
     (root / "meta").mkdir(parents=True)

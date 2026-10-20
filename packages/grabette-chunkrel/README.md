@@ -42,7 +42,7 @@ rotation and invalidated the first three robot runs; the tests pin this.
 
 | Stage | Switch | Default |
 |---|---|---|
-| Stats | `grabette_postprocess.write_relative_action_stats` | deltas |
+| Stats | `grabette_dataset_tools.chunk_relative_stats.write_relative_action_stats` | deltas |
 | Training | `GRABETTE_CHUNK_RELATIVE=1` (`integrations/Pi05/train.py`) | off |
 | Gate | `smoke_generation.py --chunk_relative` | off |
 | Eval | `evaluate.py --chunk_relative auto\|on\|off` | auto (reads the checkpoint) |

@@ -1,7 +1,8 @@
 """Regenerate gRPC Python files from proto/gripper.proto for the sim package.
 
-Mirrors packages/gripette/generate_proto.py. The gripper.proto here MUST stay
-field-for-field identical to packages/gripette/proto/gripper.proto — the eval
+Mirrors packages/gripette/generate_proto.py in the grabette repo. The gripper.proto
+here MUST stay field-for-field identical to grabette's
+packages/gripette/proto/gripper.proto (CI's proto-sync job checks it) — the eval
 client (built from these stubs) talks to BOTH the sim server and the real
 device over the wire, so field numbers must match.
 

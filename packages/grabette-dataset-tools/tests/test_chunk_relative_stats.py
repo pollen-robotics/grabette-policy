@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 from grabette_chunkrel.chunk_relative import to_chunk_relative
-from grabette_postprocess.chunk_relative_stats import (
+from grabette_dataset_tools.chunk_relative_stats import (
     relative_action_stats,
     write_relative_action_stats,
 )

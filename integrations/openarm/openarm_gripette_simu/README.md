@@ -55,7 +55,7 @@ Two gRPC services on separate ports:
 
 ### GripperService (port 50051)
 
-Identical to the real [Gripette](../../../packages/gripette) gRPC API.
+Identical to the real [Gripette](https://github.com/pollen-robotics/grabette/tree/develop/packages/gripette) gRPC API.
 
 | RPC | Description |
 |-----|-------------|

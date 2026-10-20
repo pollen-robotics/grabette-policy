@@ -12,7 +12,7 @@ import json
 import pandas as pd
 import pytest
 
-from grabette_postprocess.normalize_raw import (
+from grabette_dataset_tools.normalize_raw import (
     rename_video_feature,
     strip_name_prefix,
 )
@@ -109,7 +109,7 @@ def test_strip_prefix_renames_channels(ds):
 def test_strip_prefix_is_needed_for_channel_lookup(ds):
     """Why this matters: our tooling locates the gripper BY NAME, and the publish
     gate errors on the prefixed names."""
-    from grabette_postprocess.grasp_projection_convert import _gripper_columns
+    from grabette_dataset_tools.grasp_projection_convert import _gripper_columns
 
     info = json.loads((ds / "meta" / "info.json").read_text())
     # substring matching already finds them, so the strip is about the publish

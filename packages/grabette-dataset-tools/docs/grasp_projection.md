@@ -1,7 +1,7 @@
 # The grasp projection
 
 **Status:** design + results, 2026-08-06. Code:
-`packages/gripette/gripette/grasp_projection.py`. To record data for it, see
+`packages/grabette-dataset-tools/grabette_dataset_tools/grasp_projection.py`. To record data for it, see
 [grasp_projection_recording_procedure.md](grasp_projection_recording_procedure.md).
 
 ## The problem it solves
@@ -114,7 +114,7 @@ None of this reaches the trained **checkpoint**, which keeps only
 **Convert a dataset** (never in place — the raw dataset is the archive):
 
 ```bash
-uv run python -m grabette_postprocess.grasp_projection_convert \
+uv run python -m grabette_dataset_tools.grasp_projection_convert \
     --src <raw-dataset-root> --dst <converted-root> [--rest-is-closed]
 ```
 
@@ -165,8 +165,8 @@ differentiated too: mustard ≈ 0.001, can ≈ 0.11, cup ≈ 0.27–0.29.
 
 | file | covers |
 |---|---|
-| `packages/gripette/tests/test_grasp_projection.py` | the map: round trips both directions, channel independence, saturation above 1.0, clamping, sign normalisation, median filter edges |
-| `packages/gripette/tests/test_grip_segmentation.py` | event detection: ramps vs drift vs twitches, both rest conventions |
-| `packages/grabette-postprocess/tests/test_grasp_projection_convert.py` | the conversion: full close commanded, state left honest, strategy latched, non-grasp frames untouched |
-| `packages/gripette/tests/test_torque_ceiling.py` | the ceiling is enforced, including for an unset per-command limit |
-| `packages/gripette/tests/test_limit_tolerance.py` | a goal exactly at a joint limit survives float32 quantisation |
+| `tests/test_grasp_projection.py` | the map: round trips both directions, channel independence, saturation above 1.0, clamping, sign normalisation, median filter edges |
+| `tests/test_grip_segmentation.py` | event detection: ramps vs drift vs twitches, both rest conventions |
+| `tests/test_grasp_projection_convert.py` | the conversion: full close commanded, state left honest, strategy latched, non-grasp frames untouched |
+| [grabette](https://github.com/pollen-robotics/grabette): `packages/gripette/tests/test_torque_ceiling.py` | the ceiling is enforced, including for an unset per-command limit |
+| [grabette](https://github.com/pollen-robotics/grabette): `packages/gripette/tests/test_limit_tolerance.py` | a goal exactly at a joint limit survives float32 quantisation |

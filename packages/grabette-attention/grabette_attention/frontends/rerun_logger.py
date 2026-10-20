@@ -5,7 +5,7 @@ ends read identical records, which is the whole point of keeping the analysis
 layer free of presentation.
 
 Entity naming follows the repo's existing visualiser
-(`packages/grabette-postprocess/scripts/visualize/visualize_rgbd_trajectory.py`):
+(`grabette-postprocess/scripts/visualize/visualize_rgbd_trajectory.py` in the grabette-slam repo):
 `camera_feed/<name>` for imagery, `metrics/...` for scalar series.
 """
 

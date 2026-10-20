@@ -81,7 +81,7 @@ import click
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-from gripette.grasp_projection import (
+from grabette_dataset_tools.grasp_projection import (
     PROJECTION_SIDECAR,
     GraspProjection,
     normalize_closing_sign,
@@ -256,9 +256,9 @@ def _write_card(dst_root: Path, repo_id: str | None = None) -> None:
         "closure stays continuous, so \"am I holding something\" remains "
         "observable.\n\n"
         f"The exact calibration is recorded in `{PROJECTION_SIDECAR}`. Decode with "
-        "`gripette.grasp_projection.GraspProjection` — see "
-        "[grasp_projection.md](https://github.com/pollen-robotics/grabette/"
-        "blob/develop/packages/gripette/docs/grasp_projection.md).\n"
+        "`grabette_dataset_tools.grasp_projection.GraspProjection` — see "
+        "[grasp_projection.md](https://github.com/pollen-robotics/grabette-policy/"
+        "blob/develop/packages/grabette-dataset-tools/docs/grasp_projection.md).\n"
     )
     logger.info("Wrote %s", path)
 
@@ -373,7 +373,7 @@ def convert_dataset(
     # but the operator should hear about them here, while the context is fresh,
     # rather than from a training run that dies in `get_safe_version` an hour in.
     # Run `checks.publish.check_publish` as the hard gate before uploading.
-    from grabette_postprocess.checks.publish import check_publish
+    from grabette_dataset_tools.checks.publish import check_publish
 
     audit = check_publish(dst_root)
     for msg in audit["errors"]:

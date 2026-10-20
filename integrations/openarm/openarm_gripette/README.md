@@ -67,7 +67,7 @@ uv run python -m openarm_gripette.grpc_server_real \
     --can_port can0 --side right --arm_port 50052
 ```
 
-Client machines (running eval / teleop) connect to `arm_addr = <robot-ip>:50052` and to the gripette's own gRPC service (`packages/gripette`) for the gripper.
+Client machines (running eval / teleop) connect to `arm_addr = <robot-ip>:50052` and to the gripette's own gRPC service ([`packages/gripette`](https://github.com/pollen-robotics/grabette/tree/develop/packages/gripette) in the grabette repo) for the gripper.
 
 ### The contact guard: `--max_target_lead_mm`
 

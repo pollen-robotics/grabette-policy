@@ -33,7 +33,7 @@ import click
 import numpy as np
 import pandas as pd
 
-from grabette_postprocess.grasp_projection_convert import _gripper_columns
+from grabette_dataset_tools.grasp_projection_convert import _gripper_columns
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ def main(src_root, dst_root, repo_id, camera, strip_prefix, task, overwrite):
         logger.info("Relabelling task -> %r", task)
         modify_tasks(LeRobotDataset(repo_id, root=out), new_task=task)
 
-    from grabette_postprocess.checks.publish import check_publish
+    from grabette_dataset_tools.checks.publish import check_publish
 
     audit = check_publish(out)
     for kind in ("errors", "warnings"):

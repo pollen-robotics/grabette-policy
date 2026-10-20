@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from gripette.grasp_projection import (
+from grabette_dataset_tools.grasp_projection import (
     GraspProjection,
     _median_filter,
     clamp_to_command_limits,

@@ -193,7 +193,7 @@ def _check_projection_sidecar(src, projected, status):
     and nothing else would notice: the commands stay in range, the grasp is just
     wrong.
     """
-    from gripette.grasp_projection import (
+    from grabette_dataset_tools.grasp_projection import (
         PROJECTION_SIDECAR,
         REPRESENTATION,
         GraspProjection,

@@ -59,7 +59,7 @@ from openarm_gripette_simu.rotation import (
     rotation_6d_to_matrix as rotation_6d_to_rotation_matrix_numpy,
     rotation_matrix_to_6d as rotation_matrix_to_rotation_6d_numpy,
 )
-from gripette.grasp_projection import GraspProjection, clamp_to_command_limits
+from grabette_dataset_tools.grasp_projection import GraspProjection, clamp_to_command_limits
 
 
 # --- Debug frame display (headless-safe) -------------------------------------

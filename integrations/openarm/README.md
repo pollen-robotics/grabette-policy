@@ -1,6 +1,6 @@
 # OpenArm-Gripette integration
 
-The **OpenArm-Gripette** is our custom robot platform: a 7-DoF [OpenArm](https://openarm.dev) follower with the Grabette team's [Gripette](../../packages/gripette/) gripper as end-effector, instead of the stock OpenArm gripper. It's built to be teleoperated via the [Grabette](../../packages/grabette/) motion-capture glove and used as the target platform for imitation-learning policies trained on Grabette-collected data.
+The **OpenArm-Gripette** is our custom robot platform: a 7-DoF [OpenArm](https://openarm.dev) follower with the Grabette team's [Gripette](https://github.com/pollen-robotics/grabette/tree/develop/packages/gripette) gripper as end-effector, instead of the stock OpenArm gripper. It's built to be teleoperated via the [Grabette](https://github.com/pollen-robotics/grabette/tree/develop/packages/grabette) motion-capture glove and used as the target platform for imitation-learning policies trained on Grabette-collected data.
 
 Three sibling packages make it up:
 
@@ -18,7 +18,7 @@ The whole point of the layout is that a **single eval script targets either sim 
 Eval / teleop client  ──── ArmService (gRPC) ─────►  SIM:  openarm_gripette_simu.arm_servicer
                                                     REAL: openarm_gripette.grpc_server_real
 Eval / teleop client  ──── GripperService (gRPC) ─►  SIM:  openarm_gripette_simu.gripper_servicer
-                                                    REAL: gripette's own gRPC service (packages/gripette)
+                                                    REAL: gripette's own gRPC service (grabette repo: packages/gripette)
 ```
 
 The **proto stubs, kinematics, and rotation utilities** live in `openarm_gripette_simu/` and are shared with `openarm_gripette/` (real-hardware side) so the two implementations are bit-for-bit interchangeable. This "little coupling" is the deliberate cross-package dependency: `openarm_gripette` depends on `openarm_gripette_simu` for those utilities only, not for the MuJoCo runtime.

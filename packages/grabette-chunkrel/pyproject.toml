@@ -8,7 +8,7 @@ requires-python = ">=3.11"
 # provide torch and lerobot — the HF Jobs training container, the Ficelle
 # inference server, the eval loop — and it must not fight them for a version.
 #
-# `grabette-postprocess` pins `lerobot[dataset,viz]==0.6.0` while the pi05
+# `grabette-dataset-tools` pins `lerobot[dataset]==0.6.0` while the pi05
 # training script pins `lerobot @ git+...@<rev>`; declaring lerobot here would
 # reproduce that URL-vs-version conflict inside the job, i.e. after the GPU has
 # already booted. So lerobot and torch are treated as HOST-PROVIDED: imported by

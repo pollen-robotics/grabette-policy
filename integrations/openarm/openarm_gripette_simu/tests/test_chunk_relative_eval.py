@@ -241,7 +241,7 @@ def test_chunk_relative_and_the_grasp_projection_together(ev):
     """The combination Steve actually runs, and the one nothing had exercised:
     the motion is converted from chunk offsets while the gripper channels are
     decoded from (strategy, closure) to joint angles."""
-    from gripette.grasp_projection import GraspProjection, clamp_to_command_limits
+    from grabette_dataset_tools.grasp_projection import GraspProjection, clamp_to_command_limits
 
     proj = GraspProjection()
     chunks = make_chunks(2, seed=11)

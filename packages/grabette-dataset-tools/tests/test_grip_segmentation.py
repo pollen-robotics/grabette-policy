@@ -8,7 +8,7 @@ import math
 
 import pytest
 
-from gripette.grasp_projection import segment_grip
+from grabette_dataset_tools.grasp_projection import segment_grip
 
 FPS = 50
 

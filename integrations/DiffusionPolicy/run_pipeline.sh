@@ -18,7 +18,7 @@
 # position servo replaying a demonstrated angle under-closes: the recorded angle
 # is where the human's fingers sat while PRESSING the object, so reproducing it
 # stops just short and grips nothing (demos use only 38-60% of the proximal
-# range). See packages/gripette/docs/grasp_projection.md.
+# range). See packages/grabette-dataset-tools/docs/grasp_projection.md.
 #
 # Training is intentionally NOT run here — it's long-running and you'll want to
 # launch it deliberately (GPU, steps, wandb, ...). The script prints the exact
@@ -55,7 +55,7 @@
 #   --rest-is-closed      --grasp-projection: recording convention where the
 #                         operator holds the gripper CLOSED when idle. Must match
 #                         how the episodes were actually recorded — see
-#                         packages/gripette/docs/grasp_projection_recording_procedure.md.
+#                         packages/grabette-dataset-tools/docs/grasp_projection_recording_procedure.md.
 #   --projection-repo-id ID
 #                         --grasp-projection: repo_id the converted dataset is
 #                         opened under for its (mandatory) stats pass. Defaults to
@@ -223,11 +223,11 @@ if [[ "$DO_PROJECTION" == 1 ]]; then
   # --projection-repo-id remains as an escape hatch, not a normal requirement.
   PROJ_REPO_ID="${PROJ_REPO_ID:-$PROJ_ID}"
   echo; echo "==> [7] grasp projection — gripper angles -> (strategy, closure)"
-  # Runs in the grabette-postprocess project, not this one: the converter and the
+  # Runs in the grabette-dataset-tools project, not this one: the converter and the
   # projection itself live there (and in gripette), and this uv project carries
   # neither.
-  if ! uv run --project ../../packages/grabette-postprocess \
-      python -m grabette_postprocess.grasp_projection_convert \
+  if ! uv run --project ../../packages/grabette-dataset-tools \
+      python -m grabette_dataset_tools.grasp_projection_convert \
       --src_root "$TRAIN_ROOT" --dst_root "$PROJ_ROOT" --overwrite \
       --repo_id "$PROJ_REPO_ID" ${PROJ_EXTRA[@]+"${PROJ_EXTRA[@]}"}; then
     echo "ERROR: the grasp projection step failed." >&2
@@ -259,8 +259,8 @@ else
   echo "        angle is where the human's fingers sat while pressing the object;"
   echo "        a position servo replaying it stops short and grips nothing."
   echo "        Re-run with --grasp-projection, or project this dataset with:"
-  echo "          uv run --project ../../packages/grabette-postprocess \\"
-  echo "            python -m grabette_postprocess.grasp_projection_convert \\"
+  echo "          uv run --project ../../packages/grabette-dataset-tools \\"
+  echo "            python -m grabette_dataset_tools.grasp_projection_convert \\"
   echo "            --src_root $TRAIN_ROOT --dst_root $WORK/graspproj \\"
   echo "            --repo_id local/${BASE}_graspproj"
 fi

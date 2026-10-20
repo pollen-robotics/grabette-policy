@@ -20,11 +20,10 @@ accumulate into a slow arm drift):
   - Per-step deadband: a small magnitude threshold zeroes out the
     position and/or rotation component below the SLAM noise floor.
 
-Run on the same workstation that hosts the sim gRPC servers; expects
-the openarm_gripette_simu repo as a sibling of grabette/.
+Run on the same workstation that hosts the sim gRPC servers.
 
-Usage:
-    uv run python scripts/teleop_bridge.py \
+Usage (from integrations/openarm/openarm_gripette_simu):
+    uv run --extra teleop python examples/teleop_bridge.py \
         --ws ws://rgrabette2:8000/api/teleop/stream \
         --api http://rgrabette2:8000 \
         --arm localhost:50052 --gripper localhost:50051
@@ -49,15 +48,15 @@ from pathlib import Path
 # __init__.py which would otherwise pull in mujoco/placo etc. The bridge
 # has no business depending on the sim's physics stack.
 #
-# Monorepo layout: this file is at packages/grabette/scripts/teleop_bridge.py,
-# so parents[3] is the monorepo root and the sim lives under integrations/openarm/.
+# This file is at openarm_gripette_simu/examples/teleop_bridge.py, so parents[1]
+# is the sim project and the package sits right under it.
 _THIS = Path(__file__).resolve()
-_SIM_REPO = _THIS.parents[3] / "integrations" / "openarm" / "openarm_gripette_simu"
+_SIM_REPO = _THIS.parents[1]
 _SIM_PKG = _SIM_REPO / "openarm_gripette_simu"
 if not _SIM_PKG.exists():
     sys.exit(
         f"openarm_gripette_simu not found at {_SIM_REPO}. "
-        "Bridge expects the sim package at integrations/openarm/openarm_gripette_simu."
+        "The bridge must stay in openarm_gripette_simu/examples/."
     )
 sys.path.insert(0, str(_SIM_PKG))
 

@@ -9,7 +9,7 @@ import json
 import pandas as pd
 import pytest
 
-from grabette_postprocess.checks.publish import check_publish
+from grabette_dataset_tools.checks.publish import check_publish
 
 PROJECTED_CARD = """---
 tags:
@@ -236,7 +236,7 @@ PROJECTED = dict(action_names=("dx", "dy", "dz", "strategy", "closure"),
 
 
 def _good_sidecar():
-    from gripette.grasp_projection import GraspProjection
+    from grabette_dataset_tools.grasp_projection import GraspProjection
     return GraspProjection().to_metadata()
 
 

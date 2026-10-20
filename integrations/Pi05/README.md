@@ -32,7 +32,7 @@ gates, and remote deployment.
   fingers sat while *pressing* the object. The projected dataset's channels are
   `(strategy, closure)`; commands below use `_graspproj` for it, and a
   `_cartesian` id is the unprojected output.
-  See [`packages/gripette/docs/grasp_projection.md`](../../packages/gripette/docs/grasp_projection.md).
+  See [`packages/grabette-dataset-tools/docs/grasp_projection.md`](../../packages/grabette-dataset-tools/docs/grasp_projection.md).
 - **Training GPU**: A100-80GB class for batch 32 (bf16 + gradient
   checkpointing). An HF Jobs `a100-large` run costs ~$30 and ~12 h.
 - **Inference GPU**: ~10 GB in fp32 (RTX 3090/4090/5090) — either on the
@@ -176,7 +176,7 @@ default** (both learned by hitting them):
   booted. Add:
 
   ```
-  --with "git+https://github.com/pollen-robotics/grabette@develop#subdirectory=packages/grabette-chunkrel"
+  --with "git+https://github.com/pollen-robotics/grabette-policy@develop#subdirectory=packages/grabette-chunkrel"
   ```
 
   The package declares only numpy and scipy; torch and lerobot are
