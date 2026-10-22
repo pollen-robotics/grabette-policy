@@ -4,7 +4,10 @@
 #
 # Chains the prep steps so you don't run them by hand:
 #
-#   raw dataset (8D, with is_lost)  ──▶  clean_dataset.py          (reject unrecoverable-lost episodes)
+#   raw dataset (8D, with is_lost)  ──▶  normalize_raw             (only for a side-prefixed camera such as
+#                                        right_cam0, or --task: rename it to cam0, strip the channel
+#                                        prefix, relabel the task)
+#                                   ──▶  clean_dataset.py          (reject unrecoverable-lost episodes)
 #                                   ──▶  convert_dataset.py        (camera-local deltas + despike)
 #                                   ──▶  analyze_dataset.py        (QA, optional)
 #                                   ──▶  resize_dataset_videos.py  (480x360 training copy: the policy
@@ -13,6 +16,7 @@
 #                                   ──▶  grasp_projection_convert   (--grasp-projection: re-express the two
 #                                        gripper angles as (strategy, closure) so the policy can command a
 #                                        FULL close and let the object stop the fingers)
+#                                   ──▶  push to the Hub            (--push-to-hub)
 #
 # WITHOUT --grasp-projection the gripper channels stay RAW JOINT ANGLES, and a
 # position servo replaying a demonstrated angle under-closes: the recorded angle
@@ -61,6 +65,10 @@
 #                         opened under for its (mandatory) stats pass. Defaults to
 #                         a local id, which needs no Hub access — you should not
 #                         need this flag. The data always comes from the local root.
+#   --task TEXT           relabel every episode with this instruction (a VLA such as
+#                         pi05 is conditioned on it verbatim: write a sentence, not a slug)
+#   --push-to-hub ID      push the training dataset to this NEW private Hub dataset
+#                         repo (checked before the run: an existing repo is refused)
 #   --no-qa               skip the analyze_dataset.py QA step
 #   --no-resize           skip the 480x360 training copy (train on full res —
 #                         debugging only; costs 2-3x more per training step)
@@ -69,6 +77,8 @@
 # Examples:
 #   ./run_pipeline.sh local/test_pick_can_100_fixed --raw-root /tmp/lerobot_out_100_fixed
 #   ./run_pipeline.sh <user>/my_raw --proprioception relative
+#   ./run_pipeline.sh <user>/my_raw --grasp-projection --task "put the red cube in the blue box" \
+#       --push-to-hub <user>/my_raw_graspproj
 
 set -euo pipefail
 
@@ -77,7 +87,7 @@ set -euo pipefail
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
 RAW="" RAW_ROOT="" WORK="" PROPRIO="none" MAX_LOST_RUN="" CAMERAS="cam0" SMOOTH_POSES="" DO_QA=1 DO_RESIZE=1
-DO_PROJECTION=0 REST_IS_CLOSED=0 PROJ_REPO_ID=""
+DO_PROJECTION=0 REST_IS_CLOSED=0 PROJ_REPO_ID="" TASK="" PUSH_ID=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -92,6 +102,8 @@ while [[ $# -gt 0 ]]; do
     --grasp-projection) DO_PROJECTION=1; shift ;;
     --rest-is-closed) REST_IS_CLOSED=1; shift ;;
     --projection-repo-id) PROJ_REPO_ID="$2"; shift 2 ;;
+    --task)           TASK="$2"; shift 2 ;;
+    --push-to-hub)    PUSH_ID="$2"; shift 2 ;;
     -h|--help)        usage; exit 0 ;;
     -*)               echo "Unknown option: $1" >&2; exit 1 ;;
     *)                if [[ -z "$RAW" ]]; then RAW="$1"; shift; else echo "Unexpected arg: $1" >&2; exit 1; fi ;;
@@ -125,6 +137,41 @@ CLEAN_ID="local/${BASE}_clean"
 CART_ID="local/${BASE}_cartesian"
 CLEAN_ROOT="$WORK/clean"
 CART_ROOT="$WORK/cartesian"
+# The converters and the projection live in grabette-dataset-tools (and gripette);
+# this uv project carries neither.
+DATASET_TOOLS=(uv run --project ../../libs/grabette-dataset-tools python -m)
+
+# Preflight: refuse an existing push target before the run rather than after it,
+# and find a side-prefixed training camera (right_cam0) that train.py and
+# evaluate.py, which both read observation.images.cam0, would not see.
+RAW_CAM=$(uv run python - "$RAW" "$RAW_ROOT" "$PUSH_ID" <<'EOF'
+import json, sys
+from pathlib import Path
+from huggingface_hub import HfApi, hf_hub_download
+raw, root, push = sys.argv[1:]
+if push and HfApi().repo_exists(push, repo_type="dataset"):
+    sys.exit(f"ERROR: {push} already exists on the Hub; pass a new --push-to-hub id.")
+info = Path(root, "meta/info.json") if root else hf_hub_download(raw, "meta/info.json", repo_type="dataset")
+cams = [k.removeprefix("observation.images.") for k in json.loads(Path(info).read_text())["features"]
+        if k.startswith("observation.images.")]
+print(next((c for c in cams if c.endswith("cam0") and c != "cam0"), ""))
+EOF
+)
+
+if [[ -n "$RAW_CAM" || -n "$TASK" ]]; then
+  echo; echo "==> [0] normalize — ${RAW_CAM:+camera $RAW_CAM -> cam0, strip '${RAW_CAM%cam0}'; }${TASK:+task -> '$TASK'}"
+  if [[ -z "$RAW_ROOT" ]]; then
+    RAW_ROOT="$WORK/raw"
+    uv run hf download "$RAW" --repo-type dataset --local-dir "$RAW_ROOT"
+  fi
+  NORM_EXTRA=()
+  [[ -n "$RAW_CAM" ]] && NORM_EXTRA+=(--camera "$RAW_CAM" --strip_prefix "${RAW_CAM%cam0}")
+  [[ -n "$TASK" ]] && NORM_EXTRA+=(--task "$TASK")
+  "${DATASET_TOOLS[@]}" grabette_dataset_tools.normalize_raw \
+    --src_root "$RAW_ROOT" --dst_root "$WORK/norm" --repo_id "local/$BASE" --overwrite \
+    "${NORM_EXTRA[@]}"
+  RAW="local/$BASE" RAW_ROOT="$WORK/norm"
+fi
 
 # Optional args as arrays (robust to spaces / empty).
 # Expanded as ${A[@]+"${A[@]}"} at every use site, NOT "${A[@]}": bash 3.2 —
@@ -223,11 +270,7 @@ if [[ "$DO_PROJECTION" == 1 ]]; then
   # --projection-repo-id remains as an escape hatch, not a normal requirement.
   PROJ_REPO_ID="${PROJ_REPO_ID:-$PROJ_ID}"
   echo; echo "==> [7] grasp projection — gripper angles -> (strategy, closure)"
-  # Runs in the grabette-dataset-tools project, not this one: the converter and the
-  # projection itself live there (and in gripette), and this uv project carries
-  # neither.
-  if ! uv run --project ../../libs/grabette-dataset-tools \
-      python -m grabette_dataset_tools.grasp_projection_convert \
+  if ! "${DATASET_TOOLS[@]}" grabette_dataset_tools.grasp_projection_convert \
       --src_root "$TRAIN_ROOT" --dst_root "$PROJ_ROOT" --overwrite \
       --repo_id "$PROJ_REPO_ID" ${PROJ_EXTRA[@]+"${PROJ_EXTRA[@]}"}; then
     echo "ERROR: the grasp projection step failed." >&2
@@ -243,10 +286,18 @@ if [[ "$DO_PROJECTION" == 1 ]]; then
   TRAIN_ROOT="$PROJ_ROOT"
 fi
 
+if [[ -n "$PUSH_ID" ]]; then
+  echo; echo "==> [8] push — $PUSH_ID (private)"
+  uv run python -c "import sys; from lerobot.datasets.lerobot_dataset import LeRobotDataset; \
+LeRobotDataset(sys.argv[1], root=sys.argv[2]).push_to_hub(private=True, push_videos=True)" \
+    "$PUSH_ID" "$TRAIN_ROOT"
+fi
+
 echo; echo "════════════════════════════════════════════════════════════════"
 echo "  Data prep complete. Training dataset:"
 echo "    repo_id : $TRAIN_ID"
 echo "    root    : $TRAIN_ROOT"
+[[ -n "$PUSH_ID" ]] && echo "    hub     : $PUSH_ID (private; train from it with --dataset_repo_id $PUSH_ID)"
 # State the gripper representation EVERY time. Getting this wrong is silent in
 # both directions and is the single most expensive mistake available here.
 if [[ "$DO_PROJECTION" == 1 ]]; then
