@@ -113,7 +113,7 @@ mopped up by step 3's despike. Non-destructive (uses lerobot's `delete_episodes`
 The policy trains on **camera-local delta actions** (`[dx,dy,dz, dr6d_0..5,
 proximal, distal]`, 11D) and **2D gripper state**, derived from the raw recorded
 camera poses. Any single-step delta above the physical cap (an isolated SLAM
-glitch) is zeroed — "hold for that frame" — which removes the bad action without
+glitch) is replaced by a hold (zero translation, identity rotation) — which removes the bad action without
 disturbing the rest of the trajectory:
 
 ```bash
