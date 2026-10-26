@@ -36,39 +36,26 @@ import asyncio
 import json
 import logging
 import math
-import sys
 import time
 from dataclasses import dataclass
-from pathlib import Path
 
-# Resolve the openarm_gripette_simu package so we can import its proto
-# stubs and the rotation conversion (same source of truth as the server).
-# We add the INNER package directory (not the repo root) so `proto` and
-# `rotation` are loaded as top-level — that skips the parent package's
-# __init__.py which would otherwise pull in mujoco/placo etc. The bridge
-# has no business depending on the sim's physics stack.
-#
-# This file is at openarm_gripette_simu/examples/teleop_bridge.py, so parents[1]
-# is the sim project and the package sits right under it.
-_THIS = Path(__file__).resolve()
-_SIM_REPO = _THIS.parents[1]
-_SIM_PKG = _SIM_REPO / "openarm_gripette_simu"
-if not _SIM_PKG.exists():
-    sys.exit(
-        f"openarm_gripette_simu not found at {_SIM_REPO}. "
-        "The bridge must stay in openarm_gripette_simu/examples/."
-    )
-sys.path.insert(0, str(_SIM_PKG))
-
+# The proto stubs and the rotation conversion come from gripette-core — the
+# same source of truth the server uses. This used to be a sys.path insert of
+# the inner openarm_gripette_simu directory, to import `proto` and `rotation`
+# as top-level modules and so dodge the sim package's mujoco/placo imports.
+# That is no longer needed, or correct: those modules now live in
+# gripette-core, whose base install carries neither mujoco nor placo (placo is
+# its [kinematics] extra). A plain import gets the physics-free dependency the
+# hack was reaching for.
 import grpc  # noqa: E402
 import httpx  # noqa: E402
 import numpy as np  # noqa: E402
 import websockets  # noqa: E402
 from scipy.spatial.transform import Rotation  # noqa: E402
 
-from proto import arm_pb2, arm_pb2_grpc  # noqa: E402
-from proto import gripper_pb2, gripper_pb2_grpc  # noqa: E402
-from rotation import rotation_matrix_to_6d  # noqa: E402
+from gripette_core.proto import arm_pb2, arm_pb2_grpc  # noqa: E402
+from gripette_core.proto import gripper_pb2, gripper_pb2_grpc  # noqa: E402
+from gripette_core.rotation import rotation_matrix_to_6d  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",

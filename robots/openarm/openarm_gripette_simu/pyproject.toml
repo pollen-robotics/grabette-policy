@@ -6,14 +6,16 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "mujoco>=3.6",
-    "placo>=0.9",
     "numpy",
     "opencv-python>=4.9",
-    # Floor matches the generated proto stubs (GRPC_GENERATED_VERSION=1.81.0):
-    # they refuse to import on older grpcio.
+    # server.py imports grpc directly. The generated stubs (and the floor they
+    # need) now live in gripette-core, which carries that constraint itself.
     "grpcio>=1.81",
-    "protobuf>=4.25",
     "openarm-gripette-model",
+    # [kinematics] pulls placo: this package uses Kinematics, not just the
+    # proto contract. placo and protobuf are no longer listed directly — the
+    # only importer of either moved into gripette-core.
+    "gripette-core[kinematics]",
 ]
 
 [project.optional-dependencies]
@@ -54,6 +56,7 @@ build-backend = "hatchling.build"
 # Resolved from the monorepo workspace (robots/openarm/openarm_gripette_model),
 # not PyPI. Was a local `../` path dep in the standalone repo.
 openarm-gripette-model = { workspace = true }
+gripette-core = { workspace = true }
 grabette-chunkrel = { workspace = true }
 grabette-dataset-tools = { workspace = true }
 

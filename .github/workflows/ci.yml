@@ -41,9 +41,12 @@ jobs:
         run: |
           uv run python - <<'PY'
           import importlib, sys
+          # gripette_core is safe to list despite depending on placo via its
+          # [kinematics] extra: its re-exports are lazy (PEP 562), so importing
+          # the package does not import kinematics, and so needs no urdfdom.
           mods = ["grabette_dataset_tools", "grabette_dataset_tools.grasp_projection",
                   "grabette_chunkrel", "grabette_attention", "gripette",
-                  "openarm_gripette_model"]
+                  "gripette_core", "openarm_gripette_model"]
           failed = []
           for m in mods:
               try:
@@ -68,7 +71,7 @@ jobs:
           echo "grabette rev: $REV"
           curl -fsSL "https://raw.githubusercontent.com/pollen-robotics/grabette/$REV/packages/gripette/proto/gripper.proto" \
             -o "$RUNNER_TEMP/gripper.proto"
-          diff -u "$RUNNER_TEMP/gripper.proto" robots/openarm/openarm_gripette_simu/proto/gripper.proto
+          diff -u "$RUNNER_TEMP/gripper.proto" libs/gripette-core/proto/gripper.proto
 
   tests:
     runs-on: ubuntu-latest
@@ -77,6 +80,17 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+
+      - name: Shared-core unit tests
+        # gripette-core is the proto/kinematics/rotation package both arms
+        # share. Installed WITHOUT the [kinematics] extra on purpose: these
+        # tests assert in a subprocess that importing gripette_core does not
+        # drag in placo/mujoco/cv2, so running them in a placo-free env is
+        # itself the proof that a proto-only consumer (examples/teleop_bridge)
+        # can install this package on a machine with no urdfdom.
+        run: |
+          uv sync --package gripette-core --extra test
+          uv run --no-sync --package gripette-core pytest libs/gripette-core/tests -q
 
       - name: Dataset-tools unit tests
         # Python 3.11 on purpose: lerobot is marker-gated to >= 3.12, so this

@@ -1,4 +1,6 @@
-"""Regenerate gRPC Python files from proto/gripper.proto for the sim package.
+"""Regenerate gRPC Python files from proto/gripper.proto for gripette_core.
+
+Run from libs/gripette-core/ — the paths below are relative to it.
 
 Mirrors packages/gripette/generate_proto.py in the grabette repo. The gripper.proto
 here MUST stay field-for-field identical to grabette's
@@ -14,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-OUTPUT_DIR = Path("openarm_gripette_simu/proto")
+OUTPUT_DIR = Path("gripette_core/proto")
 
 
 def main():
