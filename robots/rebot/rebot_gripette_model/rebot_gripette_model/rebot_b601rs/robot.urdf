@@ -1,0 +1,3204 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="rebot_gripette">
+  
+  <link name="axis_1">
+    <inertial>
+      <origin xyz="3.33785e-06 -0.000246108 0.0467214" rpy="0 0 0" />
+      <mass value="1.177400" />
+      <inertia ixx="0.000919630331" ixy="-8.82022178e-08" ixz="2.37162046e-08" iyy="0.00090771726" iyz="-3.31039321e-06" izz="0.00119532552" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="-0 -0 0.067" rpy="3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/rs06.stl" />
+      </geometry>
+      <material name="rs06_material">
+        <color rgba="0.917647 0.917647 0.917647 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.067" rpy="3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/rs06.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0" rpy="1.5708 -0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1.stl" />
+      </geometry>
+      <material name="实体1_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0" rpy="1.5708 -0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0" rpy="1.5708 -0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__2.stl" />
+      </geometry>
+      <material name="实体1_2_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0" rpy="1.5708 -0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0" rpy="1.5708 -0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__3.stl" />
+      </geometry>
+      <material name="实体1_3_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0" rpy="1.5708 -0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__3.stl" />
+      </geometry>
+    </collision>
+  </link>
+  
+  <link name="axis_2">
+    <inertial>
+      <origin xyz="-0.00504408 -0.0156541 -0.0295281" rpy="0 0 0" />
+      <mass value="0.271048" />
+      <inertia ixx="0.000360372" ixy="-2.78257e-05" ixz="-5.79183e-05" iyy="0.000343919" iyz="-0.000106336" izz="0.000269571" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="-0.02 0.04075 -0.0764" rpy="0 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+      <material name="实体1_4_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.02 0.04075 -0.0764" rpy="0 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.02 -0.04075 -0.0764" rpy="-3.14159 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+      <material name="实体2_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.02 -0.04075 -0.0764" rpy="-3.14159 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__2.stl" />
+      </geometry>
+      <material name="实体2_2_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体3.stl" />
+      </geometry>
+      <material name="实体3_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体3.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__3.stl" />
+      </geometry>
+      <material name="实体2_3_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__3.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体4.stl" />
+      </geometry>
+      <material name="实体4_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__5.stl" />
+      </geometry>
+      <material name="实体1_5_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__5.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__4.stl" />
+      </geometry>
+      <material name="实体2_4_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体5.stl" />
+      </geometry>
+      <material name="实体5_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体5.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.02 0.04075 -0.0764" rpy="0 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+      <material name="实体2_5_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.02 0.04075 -0.0764" rpy="0 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__6.stl" />
+      </geometry>
+      <material name="实体1_6_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__6.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体4__2.stl" />
+      </geometry>
+      <material name="实体4_2_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体4__2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.02 -0.04075 -0.0764" rpy="-3.14159 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+      <material name="实体1_7_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.02 -0.04075 -0.0764" rpy="-3.14159 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__7.stl" />
+      </geometry>
+      <material name="实体1_8_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__7.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体3__2.stl" />
+      </geometry>
+      <material name="实体3_2_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0064" rpy="-1.5708 -0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体3__2.stl" />
+      </geometry>
+    </collision>
+  </link>
+  
+  <link name="axis_3">
+    <inertial>
+      <origin xyz="0.000183135 0.118109 -0.0217786" rpy="0 0 0" />
+      <mass value="1.552000" />
+      <inertia ixx="0.0228510647" ixy="8.17178289e-06" ixz="3.25917127e-06" iyy="0.00120638321" iyz="1.91295028e-06" izz="0.0232243452" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体6.stl" />
+      </geometry>
+      <material name="实体6_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体6.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体5__2.stl" />
+      </geometry>
+      <material name="实体5_2_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体5__2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体3__3.stl" />
+      </geometry>
+      <material name="实体3_3_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体3__3.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体8.stl" />
+      </geometry>
+      <material name="实体8_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体8.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0.236 -0.0345" rpy="-0 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__8.stl" />
+      </geometry>
+      <material name="实体1_9_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0.236 -0.0345" rpy="-0 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__8.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__9.stl" />
+      </geometry>
+      <material name="实体1_10_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__9.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0.236 -0.0015" rpy="3.14159 -0 1.0472" />
+      <geometry>
+        <mesh filename="package://assets/rs06.stl" />
+      </geometry>
+      <material name="rs06_2_material">
+        <color rgba="0.917647 0.917647 0.917647 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0.236 -0.0015" rpy="3.14159 -0 1.0472" />
+      <geometry>
+        <mesh filename="package://assets/rs06.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 -0 0.0035" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__10.stl" />
+      </geometry>
+      <material name="实体1_11_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0 0.0035" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__10.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体2__5.stl" />
+      </geometry>
+      <material name="实体2_6_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体2__5.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体7.stl" />
+      </geometry>
+      <material name="实体7_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体7.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体7__2.stl" />
+      </geometry>
+      <material name="实体7_2_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体7__2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体6__2.stl" />
+      </geometry>
+      <material name="实体6_2_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体6__2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.056" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__11.stl" />
+      </geometry>
+      <material name="实体1_12_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.056" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__11.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体2__6.stl" />
+      </geometry>
+      <material name="实体2_7_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体2__6.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0790752 -3.8406e-08 -0.02625" rpy="0 0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__12.stl" />
+      </geometry>
+      <material name="实体1_13_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0790752 -3.8406e-08 -0.02625" rpy="0 0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__12.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体3__4.stl" />
+      </geometry>
+      <material name="实体3_4_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体3__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0015" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__13.stl" />
+      </geometry>
+      <material name="实体1_14_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0015" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__13.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__14.stl" />
+      </geometry>
+      <material name="实体1_15_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__14.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.00732908 0.118 -0.02625" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__15.stl" />
+      </geometry>
+      <material name="实体1_16_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.00732908 0.118 -0.02625" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__15.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.0015" rpy="-3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/rs06.stl" />
+      </geometry>
+      <material name="rs06_3_material">
+        <color rgba="0.917647 0.917647 0.917647 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.0015" rpy="-3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/rs06.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体8__2.stl" />
+      </geometry>
+      <material name="实体8_2_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体8__2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体5__3.stl" />
+      </geometry>
+      <material name="实体5_3_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体5__3.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体4__3.stl" />
+      </geometry>
+      <material name="实体4_3_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体4__3.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__8.stl" />
+      </geometry>
+      <material name="实体1_17_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体1__8.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0.236 -0.0015" rpy="1e-12 -0 1.0472" />
+      <geometry>
+        <mesh filename="package://assets/实体1__13.stl" />
+      </geometry>
+      <material name="实体1_18_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0.236 -0.0015" rpy="1e-12 -0 1.0472" />
+      <geometry>
+        <mesh filename="package://assets/实体1__13.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/part_1.stl" />
+      </geometry>
+      <material name="part_1_material">
+        <color rgba="0.498039 0.498039 0.498039 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/part_1.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/part_1__2.stl" />
+      </geometry>
+      <material name="part_1_2_material">
+        <color rgba="0.701961 0.701961 0.701961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.018" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/part_1__2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体4__4.stl" />
+      </geometry>
+      <material name="实体4_4_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.0345" rpy="1e-12 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/实体4__4.stl" />
+      </geometry>
+    </collision>
+  </link>
+  
+  <link name="axis_4">
+    <inertial>
+      <origin xyz="0.233827 -0.0509997 0.0222113" rpy="0 0 0" />
+      <mass value="1.252000" />
+      <inertia ixx="0.000520121898" ixy="-1.18061435e-06" ixz="-3.96363145e-09" iyy="0.000518631508" iyz="-6.87593383e-09" izz="0.000508521025" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="0.0727461 0.042 -0.0145" rpy="-1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+      <material name="实体1_19_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0727461 0.042 -0.0145" rpy="-1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体3__5.stl" />
+      </geometry>
+      <material name="实体3_5_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体3__5.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2__7.stl" />
+      </geometry>
+      <material name="实体2_8_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2__7.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.0595" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__16.stl" />
+      </geometry>
+      <material name="实体1_20_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.0595" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__16.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0112583 0.0085 -0.0035" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__17.stl" />
+      </geometry>
+      <material name="实体1_21_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0112583 0.0085 -0.0035" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__17.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.233827 -0.051 0.0015" rpy="1e-12 1e-12 -0.523599" />
+      <geometry>
+        <mesh filename="package://assets/rs00.stl" />
+      </geometry>
+      <material name="rs00_material">
+        <color rgba="0.235294 0.235294 0.235294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.233827 -0.051 0.0015" rpy="1e-12 1e-12 -0.523599" />
+      <geometry>
+        <mesh filename="package://assets/rs00.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体7__3.stl" />
+      </geometry>
+      <material name="实体7_3_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体7__3.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0113808 0.00857071 0.056" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__18.stl" />
+      </geometry>
+      <material name="实体1_22_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0113808 0.00857071 0.056" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__18.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体4__5.stl" />
+      </geometry>
+      <material name="实体4_5_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体4__5.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.0595" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体3__6.stl" />
+      </geometry>
+      <material name="实体3_6_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.0595" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体3__6.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__19.stl" />
+      </geometry>
+      <material name="实体1_23_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__19.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.233704 -0.0509293 0.0505" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__20.stl" />
+      </geometry>
+      <material name="实体1_24_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.233704 -0.0509293 0.0505" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__20.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体4__6.stl" />
+      </geometry>
+      <material name="实体4_6_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体4__6.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.067" rpy="1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+      <material name="实体1_25_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.067" rpy="1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__21.stl" />
+      </geometry>
+      <material name="实体1_26_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__21.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__22.stl" />
+      </geometry>
+      <material name="实体1_27_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__22.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0727461 0.042 -0.0145" rpy="-1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+      <material name="实体2_9_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0727461 0.042 -0.0145" rpy="-1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__23.stl" />
+      </geometry>
+      <material name="实体1_28_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__23.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.137998 0.00302011 0.02625" rpy="-3.14159 -0 -0.523599" />
+      <geometry>
+        <mesh filename="package://assets/实体1__15.stl" />
+      </geometry>
+      <material name="实体1_29_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.137998 0.00302011 0.02625" rpy="-3.14159 -0 -0.523599" />
+      <geometry>
+        <mesh filename="package://assets/实体1__15.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0145" rpy="-1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+      <material name="实体1_30_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0145" rpy="-1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.233827 -0.051 0.0505" rpy="-1.5708 1e-12 1.0472" />
+      <geometry>
+        <mesh filename="package://assets/实体1__24.stl" />
+      </geometry>
+      <material name="实体1_31_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.233827 -0.051 0.0505" rpy="-1.5708 1e-12 1.0472" />
+      <geometry>
+        <mesh filename="package://assets/实体1__24.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 -0.0145" rpy="-1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+      <material name="实体2_10_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 -0.0145" rpy="-1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-6.57382e-05 -0.000113862 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__12.stl" />
+      </geometry>
+      <material name="实体1_32_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-6.57382e-05 -0.000113862 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__12.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体8__3.stl" />
+      </geometry>
+      <material name="实体8_3_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体8__3.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0726237 0.0420707 0.067" rpy="1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+      <material name="实体1_33_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0726237 0.0420707 0.067" rpy="1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2__8.stl" />
+      </geometry>
+      <material name="实体2_11_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2__8.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2__9.stl" />
+      </geometry>
+      <material name="实体2_12_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2__9.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体6__3.stl" />
+      </geometry>
+      <material name="实体6_3_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体6__3.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体7__4.stl" />
+      </geometry>
+      <material name="实体7_4_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体7__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体5__4.stl" />
+      </geometry>
+      <material name="实体5_4_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体5__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体8__4.stl" />
+      </geometry>
+      <material name="实体8_4_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体8__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体5__5.stl" />
+      </geometry>
+      <material name="实体5_5_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体5__5.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体3__7.stl" />
+      </geometry>
+      <material name="实体3_7_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体3__7.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.067" rpy="1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+      <material name="实体2_13_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.067" rpy="1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体6__4.stl" />
+      </geometry>
+      <material name="实体6_4_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.007" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体6__4.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体6__5.stl" />
+      </geometry>
+      <material name="实体6_5_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体6__5.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__25.stl" />
+      </geometry>
+      <material name="实体1_34_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体1__25.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0726237 0.0420707 0.067" rpy="1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+      <material name="实体2_14_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0726237 0.0420707 0.067" rpy="1.5708 0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体5__6.stl" />
+      </geometry>
+      <material name="实体5_6_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体5__6.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.0595" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2__10.stl" />
+      </geometry>
+      <material name="实体2_15_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.0595" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体2__10.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体3__8.stl" />
+      </geometry>
+      <material name="实体3_8_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体3__8.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体4__7.stl" />
+      </geometry>
+      <material name="实体4_7_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000122474 7.07107e-05 0.02625" rpy="3.14159 -0 2.61799" />
+      <geometry>
+        <mesh filename="package://assets/实体4__7.stl" />
+      </geometry>
+    </collision>
+  </link>
+  
+  <link name="axis_5">
+    <inertial>
+      <origin xyz="-0.087 -0.0747113 0.0307503" rpy="0 0 0" />
+      <mass value="0.460000" />
+      <inertia ixx="0.000191338854" ixy="-1.47996577e-12" ixz="2.05226853e-08" iyy="0.000186836798" iyz="2.91701253e-09" izz="0.000190313238" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="-0.087 -0.103 0.03075" rpy="0 1.5708 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__24.stl" />
+      </geometry>
+      <material name="实体1_35_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.087 -0.103 0.03075" rpy="0 1.5708 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__24.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体5__7.stl" />
+      </geometry>
+      <material name="实体5_7_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体5__7.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 -0 0.06374" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__11.stl" />
+      </geometry>
+      <material name="实体2_16_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0 0.06374" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__11.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体3__9.stl" />
+      </geometry>
+      <material name="实体3_9_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体3__9.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__12.stl" />
+      </geometry>
+      <material name="实体2_17_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__12.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 -0 0.06374" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__26.stl" />
+      </geometry>
+      <material name="实体1_36_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0 0.06374" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__26.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 -0 0.03075" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__27.stl" />
+      </geometry>
+      <material name="实体1_37_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0 0.03075" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__27.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.087 -0.054 0.03075" rpy="1.5708 0 -0" />
+      <geometry>
+        <mesh filename="package://assets/rs00.stl" />
+      </geometry>
+      <material name="rs00_2_material">
+        <color rgba="0.235294 0.235294 0.235294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.087 -0.054 0.03075" rpy="1.5708 0 -0" />
+      <geometry>
+        <mesh filename="package://assets/rs00.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__28.stl" />
+      </geometry>
+      <material name="实体1_38_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__28.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体4__8.stl" />
+      </geometry>
+      <material name="实体4_8_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.0025" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体4__8.stl" />
+      </geometry>
+    </collision>
+  </link>
+  
+  <link name="axis_6">
+    <inertial>
+      <origin xyz="-0.00978866 2.65e-10 -0.0480003" rpy="0 0 0" />
+      <mass value="0.310818" />
+      <inertia ixx="0.000126244" ixy="-1e-12" ixz="1.971e-09" iyy="0.000129286" iyz="1.3867e-08" izz="0.000128593" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="-0 0 -0.048" rpy="1.5708 0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__29.stl" />
+      </geometry>
+      <material name="实体1_39_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 0 -0.048" rpy="1.5708 0 -0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__29.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.048" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体3__10.stl" />
+      </geometry>
+      <material name="实体3_10_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.048" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体3__10.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0305 -0 -0.048" rpy="-1.5708 0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/rs00.stl" />
+      </geometry>
+      <material name="rs00_3_material">
+        <color rgba="0.235294 0.235294 0.235294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0305 -0 -0.048" rpy="-1.5708 0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/rs00.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.048" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__13.stl" />
+      </geometry>
+      <material name="实体2_18_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.048" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体2__13.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.048" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体4__9.stl" />
+      </geometry>
+      <material name="实体4_9_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.048" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体4__9.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0185 0 -0.048" rpy="1.5708 -1.5708 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__24.stl" />
+      </geometry>
+      <material name="实体1_40_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0185 0 -0.048" rpy="1.5708 -1.5708 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__24.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.048" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__30.stl" />
+      </geometry>
+      <material name="实体1_41_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.048" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__30.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0185 -0 -0.0025" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__31.stl" />
+      </geometry>
+      <material name="实体1_42_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0185 -0 -0.0025" rpy="1.5708 0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__31.stl" />
+      </geometry>
+    </collision>
+  </link>
+  
+  <link name="实体1">
+    <inertial>
+      <origin xyz="-0.0169216 0.00358133 -0.0431463" rpy="0 0 0" />
+      <mass value="0.226468" />
+      <inertia ixx="0.000378388" ixy="-2.6373e-05" ixz="7.56747e-05" iyy="0.000402505" iyz="-3.46952e-05" izz="0.000538277" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="0 -0.217746 0.1355" rpy="-0 -1.5708 0" />
+      <geometry>
+        <mesh filename="package://assets/2_m7_stator_1__实体1.stl" />
+      </geometry>
+      <material name="2_m7_stator_1__实体1_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0.217746 0.1355" rpy="-0 -1.5708 0" />
+      <geometry>
+        <mesh filename="package://assets/2_m7_stator_1__实体1.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 -0.005" rpy="1.5708 -0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__32.stl" />
+      </geometry>
+      <material name="实体1_43_material">
+        <color rgba="0.627451 0.627451 0.627451 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.005" rpy="1.5708 -0 0" />
+      <geometry>
+        <mesh filename="package://assets/实体1__32.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0177 0.0887356 -0.03125" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0177 0.0887356 -0.03125" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.01905 0.0907128 -0.064" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.01905 0.0907128 -0.064" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.030505 0.03655 -0.0418" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/part_1__configuration_copy_of_2x8.stl" />
+      </geometry>
+      <material name="part_1__configuration_copy_of_2x8_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.030505 0.03655 -0.0418" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/part_1__configuration_copy_of_2x8.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.028215 0.00755 -0.0303" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/rasp_pi_0_2w__configuration_default.stl" />
+      </geometry>
+      <material name="rasp_pi_0_2w__configuration_default_material">
+        <color rgba="0.972549 0.529412 0.00392157 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.028215 0.00755 -0.0303" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/rasp_pi_0_2w__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0096 0.0338 -0.0385" rpy="-1.5708 -1.5708 0" />
+      <geometry>
+        <mesh filename="package://assets/feetech_sts3215__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_sts3215__configuration_default_material">
+        <color rgba="0.647059 0.647059 0.647059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0096 0.0338 -0.0385" rpy="-1.5708 -1.5708 0" />
+      <geometry>
+        <mesh filename="package://assets/feetech_sts3215__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.031105 0.03655 -0.0188" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hexalobular_socket_pan_head_screw_m2_5x0_45_x_6__a0337967dd2415a96d32f4de9af75974.stl" />
+      </geometry>
+      <material name="hexalobular_socket_pan_head_screw_m2_5x0_45_x_6__a0337967dd2415a96d32f4de9af75974_material">
+        <color rgba="0.603922 0.647059 0.686275 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.031105 0.03655 -0.0188" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hexalobular_socket_pan_head_screw_m2_5x0_45_x_6__a0337967dd2415a96d32f4de9af75974.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0177 0.0682356 -0.03125" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_2_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0177 0.0682356 -0.03125" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0182 0.0887356 -0.0557" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_3_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0182 0.0887356 -0.0557" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.019 -0.0481628 -0.0940304" rpy="-0 0.399274 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.019 -0.0481628 -0.0940304" rpy="-0 0.399274 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.110259 0.00745136 -0.0344905" rpy="-0.349066 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_2_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.110259 0.00745136 -0.0344905" rpy="-0.349066 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0182 0.0682356 -0.035" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_4_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0182 0.0682356 -0.035" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0404 -0.0221436 -0.0044" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_3_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0404 -0.0221436 -0.0044" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.019 -0.0481628 -0.0940304" rpy="-0 0.399274 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_4_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.019 -0.0481628 -0.0940304" rpy="-0 0.399274 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0554246 0.0289514 -0.008" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hex_socket_head_cap_screw_m4x0_70_x_8__a416dc2a8d778a4ef6150c0739aa89d1.stl" />
+      </geometry>
+      <material name="hex_socket_head_cap_screw_m4x0_70_x_8__a416dc2a8d778a4ef6150c0739aa89d1_material">
+        <color rgba="0.603922 0.647059 0.686275 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0554246 0.0289514 -0.008" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hex_socket_head_cap_screw_m4x0_70_x_8__a416dc2a8d778a4ef6150c0739aa89d1.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0242 0.0233564 -0.0797273" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/gripper_base_r.stl" />
+      </geometry>
+      <material name="gripper_base_r_material">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0242 0.0233564 -0.0797273" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/gripper_base_r.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.01535 -0.0284995 -0.03896" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_5_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.01535 -0.0284995 -0.03896" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.01715 -0.0285995 -0.03896" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_6_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.01715 -0.0285995 -0.03896" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.031105 -0.02145 -0.0418" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hexalobular_socket_pan_head_screw_m2_5x0_45_x_6__a0337967dd2415a96d32f4de9af75974.stl" />
+      </geometry>
+      <material name="hexalobular_socket_pan_head_screw_m2_5x0_45_x_6__a0337967dd2415a96d32f4de9af75974_2_material">
+        <color rgba="0.603922 0.647059 0.686275 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.031105 -0.02145 -0.0418" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hexalobular_socket_pan_head_screw_m2_5x0_45_x_6__a0337967dd2415a96d32f4de9af75974.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0554246 -0.0160486 -0.008" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hex_socket_head_cap_screw_m4x0_70_x_8__a416dc2a8d778a4ef6150c0739aa89d1.stl" />
+      </geometry>
+      <material name="hex_socket_head_cap_screw_m4x0_70_x_8__a416dc2a8d778a4ef6150c0739aa89d1_2_material">
+        <color rgba="0.603922 0.647059 0.686275 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0554246 -0.0160486 -0.008" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hex_socket_head_cap_screw_m4x0_70_x_8__a416dc2a8d778a4ef6150c0739aa89d1.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0242 0.0233564 -0.0797273" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/grip_shell_r.stl" />
+      </geometry>
+      <material name="grip_shell_r_material">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0242 0.0233564 -0.0797273" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/grip_shell_r.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0977284 -0.00704864 -0.0265242" rpy="2.79253 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/arducam_fisheye.stl" />
+      </geometry>
+      <material name="arducam_fisheye_material">
+        <color rgba="0.235294 0.235294 0.235294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0977284 -0.00704864 -0.0265242" rpy="2.79253 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/arducam_fisheye.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.01845 -0.0429995 -0.042" rpy="0 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/bulkhead.stl" />
+      </geometry>
+      <material name="bulkhead_material">
+        <color rgba="0.980392 0.713725 0.00392157 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.01845 -0.0429995 -0.042" rpy="0 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/bulkhead.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0182 0.0887356 -0.035" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_5_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0182 0.0887356 -0.035" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0830084 -0.0215486 -0.0245719" rpy="-0.349066 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_7_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0830084 -0.0215486 -0.0245719" rpy="-0.349066 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0242 0.0233564 -0.0797273" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/cameras_holder_r.stl" />
+      </geometry>
+      <material name="cameras_holder_r_material">
+        <color rgba="0.262745 0.282353 0.301961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0242 0.0233564 -0.0797273" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/cameras_holder_r.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0182 0.0682356 -0.0557" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_6_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0182 0.0682356 -0.0557" rpy="-0 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 -0.0628323 -0.0889261" rpy="-0 0.399274 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_8_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0.0628323 -0.0889261" rpy="-0 0.399274 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0242 0.0233564 -0.0797273" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/grip_soft_tip_r.stl" />
+      </geometry>
+      <material name="grip_soft_tip_r_material">
+        <color rgba="0.301961 0.301961 0.301961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0242 0.0233564 -0.0797273" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/grip_soft_tip_r.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.030505 -0.02145 -0.0188" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/part_1__configuration_copy_of_2x8.stl" />
+      </geometry>
+      <material name="part_1__configuration_copy_of_2x8_2_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.030505 -0.02145 -0.0188" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/part_1__configuration_copy_of_2x8.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0830084 0.00745136 -0.0245719" rpy="-0.349066 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_9_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0830084 0.00745136 -0.0245719" rpy="-0.349066 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.02334 -0.02495 -0.0453" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hub_dyn.stl" />
+      </geometry>
+      <material name="hub_dyn_material">
+        <color rgba="0.231373 0.380392 0.705882 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.02334 -0.02495 -0.0453" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/hub_dyn.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.110259 -0.0215486 -0.0344905" rpy="-0.349066 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_10_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.110259 -0.0215486 -0.0344905" rpy="-0.349066 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0404 0.00785636 -0.0044" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_11_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0404 0.00785636 -0.0044" rpy="3.14159 0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/611_00020_1.stl" />
+      </geometry>
+      <material name="611_00020_1_material">
+        <color rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/611_00020_1.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/611_00020.stl" />
+      </geometry>
+      <material name="611_00020_material">
+        <color rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/611_00020.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_1.stl" />
+      </geometry>
+      <material name="602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_1_material">
+        <color rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_1.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/sr_lens_py058.stl" />
+      </geometry>
+      <material name="sr_lens_py058_material">
+        <color rgba="0.262745 0.282353 0.301961 0.376471" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/sr_lens_py058.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802.stl" />
+      </geometry>
+      <material name="602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_material">
+        <color rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/612_00001_tim_thermal_oak_d_poe.stl" />
+      </geometry>
+      <material name="612_00001_tim_thermal_oak_d_poe_material">
+        <color rgba="0.596078 0.666667 0.686275 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/612_00001_tim_thermal_oak_d_poe.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/lens_adhesive.stl" />
+      </geometry>
+      <material name="lens_adhesive_material">
+        <color rgba="0.262745 0.282353 0.301961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/lens_adhesive.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/606_00021_sr_back_cover_py074.stl" />
+      </geometry>
+      <material name="606_00021_sr_back_cover_py074_material">
+        <color rgba="0.262745 0.282353 0.301961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/606_00021_sr_back_cover_py074.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_2.stl" />
+      </geometry>
+      <material name="602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_2_material">
+        <color rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_2.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_3.stl" />
+      </geometry>
+      <material name="602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_3_material">
+        <color rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/602_00009_phillips_flat_head__m2_x_0_40mm_thread__14mm_long_screw_92010a802_3.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/606_00020_sr_front_cover.stl" />
+      </geometry>
+      <material name="606_00020_sr_front_cover_material">
+        <color rgba="0.262745 0.282353 0.301961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0400246 0.0289514 -0.0315" rpy="-3.14159 -0 -1.5708" />
+      <geometry>
+        <mesh filename="package://assets/606_00020_sr_front_cover.stl" />
+      </geometry>
+    </collision>
+  </link>
+  
+  <link name="camera">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1e-9" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="camera_frame" type="fixed">
+    <origin xyz="-0.0933847 -0.00704864 -0.0384583" rpy="2.79253 0 1.5708" />
+    <parent link="实体1" />
+    <child link="camera" />
+    <axis xyz="0 0 0" />
+  </joint>
+  
+  <link name="oak_l">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1e-9" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="oak_l_frame" type="fixed">
+    <origin xyz="-0.0530246 -0.00354864 -0.038333" rpy="3.14159 0 1.5708" />
+    <parent link="实体1" />
+    <child link="oak_l" />
+    <axis xyz="0 0 0" />
+  </joint>
+  
+  <link name="oak_r">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1e-9" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="oak_r_frame" type="fixed">
+    <origin xyz="-0.0530246 0.0164514 -0.038333" rpy="3.14159 0 1.5708" />
+    <parent link="实体1" />
+    <child link="oak_r" />
+    <axis xyz="0 0 0" />
+  </joint>
+  
+  <link name="thumb_tip">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1e-9" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="thumb_tip_frame" type="fixed">
+    <origin xyz="-0 -0.0572992 -0.119161" rpy="3.14159 -0.799448 1.5708" />
+    <parent link="实体1" />
+    <child link="thumb_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  
+  <link name="gripper_center">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1e-9" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="gripper_center_frame" type="fixed">
+    <origin xyz="-0 -0.00354845 -0.0975873" rpy="-3.14159 1.5708 0" />
+    <parent link="实体1" />
+    <child link="gripper_center" />
+    <axis xyz="0 0 0" />
+  </joint>
+  
+  <link name="gripper_base">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1e-9" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="gripper_base_frame" type="fixed">
+    <origin xyz="0 0 -0.009" rpy="-0 0 1.5708" />
+    <parent link="实体1" />
+    <child link="gripper_base" />
+    <axis xyz="0 0 0" />
+  </joint>
+  
+  <link name="gripette_r_proximal__configuration_default">
+    <inertial>
+      <origin xyz="-0.0253871 0.0238504 0.0244876" rpy="0 0 0" />
+      <mass value="0.0783612" />
+      <inertia ixx="3.26085e-05" ixy="7.6056e-06" ixz="-4.57808e-06" iyy="3.90269e-05" iyz="3.05604e-06" izz="2.89223e-05" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="-0.007 0.0569128 -0.00245" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_2_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.007 0.0569128 -0.00245" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0159606 0.0507774 0.03705" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_7_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0159606 0.0507774 0.03705" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0.0639128 0.04055" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_3_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0639128 0.04055" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.00509722 0.0681624 0.03705" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_8_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.00509722 0.0681624 0.03705" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.007 0.0569128 0.04055" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_4_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.007 0.0569128 0.04055" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0191407 0.0527646 0.00055" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_9_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0191407 0.0527646 0.00055" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.007 0.0569128 -0.00245" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_5_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.007 0.0569128 -0.00245" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0306496 0.00861696 0.03925" rpy="1.5708 -0 2.44347" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_12_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0306496 0.00861696 0.03925" rpy="1.5708 -0 2.44347" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0306496 0.00861696 -0.00115" rpy="1.5708 -0 2.44347" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_13_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0306496 0.00861696 -0.00115" rpy="1.5708 -0 2.44347" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0157273 -0.0104436 0.04325" rpy="0 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/proximal_shell_r.stl" />
+      </geometry>
+      <material name="proximal_shell_r_material">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0157273 -0.0104436 0.04325" rpy="0 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/proximal_shell_r.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0.0499128 0.04055" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_6_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0499128 0.04055" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0157273 -0.0104436 0.04325" rpy="0 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/proximal_bot_r.stl" />
+      </geometry>
+      <material name="proximal_bot_r_material">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0157273 -0.0104436 0.04325" rpy="0 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/proximal_bot_r.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.007 0.0569128 0.04055" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_7_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.007 0.0569128 0.04055" rpy="-1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0.0499128 -0.00245" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_8_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0499128 -0.00245" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0082774 0.0701496 0.00055" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_pt_screw_2x6__configuration_default_10_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0082774 0.0701496 0.00055" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_pt_screw_2x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0166772 0.0186261 0.00935" rpy="-1.5708 -0 -0.558505" />
+      <geometry>
+        <mesh filename="package://assets/feetech_sts3215__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_sts3215__configuration_default_2_material">
+        <color rgba="0.647059 0.647059 0.647059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0166772 0.0186261 0.00935" rpy="-1.5708 -0 -0.558505" />
+      <geometry>
+        <mesh filename="package://assets/feetech_sts3215__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0157273 -0.0104436 0.04325" rpy="0 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/cross_bar.stl" />
+      </geometry>
+      <material name="cross_bar_material">
+        <color rgba="0.917647 0.917647 0.917647 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0157273 -0.0104436 0.04325" rpy="0 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/cross_bar.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0157273 -0.0104436 0.04325" rpy="0 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/proximal_top_r.stl" />
+      </geometry>
+      <material name="proximal_top_r_material">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0157273 -0.0104436 0.04325" rpy="0 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/proximal_top_r.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0.0639128 -0.00245" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_9_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0639128 -0.00245" rpy="1.5708 -0 1.5708" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+  </link>
+  
+  <link name="gripette_r_distal__configuration_default">
+    <inertial>
+      <origin xyz="-0.0238288 -0.00197292 0.0190584" rpy="0 0 0" />
+      <mass value="0.0238009" />
+      <inertia ixx="7.52691e-06" ixy="-4.59326e-07" ixz="-2.042e-09" iyy="1.02044e-05" iyz="-5.32e-10" izz="6.03004e-06" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="-0.0371592 0.0482648 -0.00215" rpy="1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_10_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0371592 0.0482648 -0.00215" rpy="1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0341282 -0.00787544 0.03805" rpy="1.5708 -0 1.57395" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_14_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0341282 -0.00787544 0.03805" rpy="1.5708 -0 1.57395" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0301592 0.0552648 0.04025" rpy="-1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_11_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0301592 0.0552648 0.04025" rpy="-1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0417102 -0.0241492 0.04325" rpy="0 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/distal_soft_tip.stl" />
+      </geometry>
+      <material name="distal_soft_tip_material">
+        <color rgba="0.301961 0.301961 0.301961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0417102 -0.0241492 0.04325" rpy="0 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/distal_soft_tip.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0301592 0.0552648 -0.00215" rpy="1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_12_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0301592 0.0552648 -0.00215" rpy="1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0371592 0.0482648 0.04025" rpy="-1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_13_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0371592 0.0482648 0.04025" rpy="-1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0341282 -0.00787544 5e-05" rpy="1.5708 -0 1.57395" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_15_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0341282 -0.00787544 5e-05" rpy="1.5708 -0 1.57395" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0.0417102 -0.0241492 0.04325" rpy="0 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/distal_part_r.stl" />
+      </geometry>
+      <material name="distal_part_r_material">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0417102 -0.0241492 0.04325" rpy="0 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/distal_part_r.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0231592 0.0482648 0.04025" rpy="-1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_14_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0231592 0.0482648 0.04025" rpy="-1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0301592 0.0412648 0.04025" rpy="-1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_15_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0301592 0.0412648 0.04025" rpy="-1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0231592 0.0482648 -0.00215" rpy="1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_16_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0231592 0.0482648 -0.00215" rpy="1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.035177 0.00762134 0.01905" rpy="1.5708 -0 1.57395" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+      <material name="std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_16_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.035177 0.00762134 0.01905" rpy="1.5708 -0 1.57395" />
+      <geometry>
+        <mesh filename="package://assets/std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default.stl" />
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="-0.0301592 0.0412648 -0.00215" rpy="1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+      <material name="feetech_screw_m3x6__configuration_default_17_material">
+        <color rgba="0.901961 0.901961 0.901961 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0301592 0.0412648 -0.00215" rpy="1.5708 -0 2.1293" />
+      <geometry>
+        <mesh filename="package://assets/feetech_screw_m3x6__configuration_default.stl" />
+      </geometry>
+    </collision>
+  </link>
+  
+  <link name="finger_tip">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1e-9" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="finger_tip_frame" type="fixed">
+    <origin xyz="-0.0608298 -0.00931139 0.01905" rpy="-1.5708 -0 2.77267" />
+    <parent link="gripette_r_distal__configuration_default" />
+    <child link="finger_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  
+  <joint name="distal" type="revolute">
+    <origin xyz="-0.0383025 0.0321391 -0.0001" rpy="0 -0 -0.558505" />
+    <parent link="gripette_r_proximal__configuration_default" />
+    <child link="gripette_r_distal__configuration_default" />
+    <axis xyz="0 0 1" />
+    <limit effort="10" velocity="10" lower="0" upper="1.5708" />
+  </joint>
+  
+  <joint name="proximal" type="revolute">
+    <origin xyz="0.01905 0.0338 -0.064" rpy="-0 -1.5708 0" />
+    <parent link="实体1" />
+    <child link="gripette_r_proximal__configuration_default" />
+    <axis xyz="0 0 1" />
+    <limit effort="10" velocity="10" lower="0" upper="1.5708" />
+  </joint>
+  
+  <joint name="wrist_roll" type="revolute">
+    <origin xyz="-0.0359 -0 -0.048" rpy="-0 1.5708 0" />
+    <parent link="axis_6" />
+    <child link="实体1" />
+    <axis xyz="0 0 1" />
+    <limit effort="10" velocity="10" lower="-2.26893" upper="2.26893" />
+  </joint>
+  
+  <joint name="wrist_yaw" type="revolute">
+    <origin xyz="-0.087 -0.0486 0.03075" rpy="1.5708 -1e-12 -0" />
+    <parent link="axis_5" />
+    <child link="axis_6" />
+    <axis xyz="0 0 1" />
+    <limit effort="10" velocity="10" lower="-1.5708" upper="1.5708" />
+  </joint>
+  
+  <joint name="wrist_flex" type="revolute">
+    <origin xyz="0.233827 -0.051 -0.0039" rpy="-0 -0 2.61799" />
+    <parent link="axis_4" />
+    <child link="axis_5" />
+    <axis xyz="0 0 1" />
+    <limit effort="10" velocity="10" lower="-1.39626" upper="1.5708" />
+  </joint>
+  
+  <joint name="elbow_flex" type="revolute">
+    <origin xyz="-0 0.236 0" rpy="3.14159 0 -2.0944" />
+    <parent link="axis_3" />
+    <child link="axis_4" />
+    <axis xyz="0 0 1" />
+    <limit effort="10" velocity="10" lower="0" upper="3.49066" />
+  </joint>
+  
+  <joint name="shoulder_lift" type="revolute">
+    <origin xyz="-0.02 0.02625 -0.0764" rpy="-1.5708 -1.5708 0" />
+    <parent link="axis_2" />
+    <child link="axis_3" />
+    <axis xyz="0 0 1" />
+    <limit effort="10" velocity="10" lower="0" upper="2.96706" />
+  </joint>
+  
+  <joint name="shoulder_pan" type="revolute">
+    <origin xyz="-0 -0 0.0685" rpy="3.14159 -0 0" />
+    <parent link="axis_1" />
+    <child link="axis_2" />
+    <axis xyz="0 0 1" />
+    <limit effort="10" velocity="10" lower="-2.53073" upper="2.53073" />
+  </joint>
+</robot>

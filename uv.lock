@@ -22,6 +22,7 @@ members = [
     "openarm-gripette",
     "openarm-gripette-model",
     "openarm-gripette-simu",
+    "rebot-gripette-model",
 ]
 constraints = [
     { name = "cmeel-tinyxml2", specifier = "==10.0.0" },
@@ -3478,6 +3479,30 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a1/cf/f2b3784d536250ffd4be70e049f3b60981235d70c6e8ce7e3ef21e1adb25/pyzmq-27.1.0-pp311-pypy311_pp73-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f605d884e7c8be8fe1aa94e0a783bf3f591b84c24e4bc4f3e7564c82ac25e271", size = 747371, upload-time = "2025-09-08T23:09:54.563Z" },
     { url = "https://files.pythonhosted.org/packages/01/1b/5dbe84eefc86f48473947e2f41711aded97eecef1231f4558f1f02713c12/pyzmq-27.1.0-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:c9f7f6e13dff2e44a6afeaf2cf54cee5929ad64afaf4d40b50f93c58fc687355", size = 544862, upload-time = "2025-09-08T23:09:56.509Z" },
 ]
+
+[[package]]
+name = "rebot-gripette-model"
+version = "0.1.0"
+source = { editable = "robots/rebot/rebot_gripette_model" }
+
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
+]
+urdf = [
+    { name = "mujoco" },
+    { name = "onshape-to-robot" },
+    { name = "pybullet" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mujoco", marker = "extra == 'urdf'", specifier = ">=3.6" },
+    { name = "onshape-to-robot", marker = "extra == 'urdf'", specifier = ">=1.8.1" },
+    { name = "pybullet", marker = "extra == 'urdf'", specifier = ">=3.2.7" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
+]
+provides-extras = ["urdf", "test"]
 
 [[package]]
 name = "regex"

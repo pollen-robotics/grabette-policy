@@ -92,6 +92,18 @@ jobs:
           uv sync --package gripette-core --extra test
           uv run --no-sync --package gripette-core pytest libs/gripette-core/tests -q
 
+      - name: reBot model consistency
+        # robot.urdf and robot.xml come from two separate onshape-to-robot
+        # passes and are then mass-patched by postprocess_rebot.py. Placo reads
+        # one, MuJoCo the other, and when they disagree nothing raises - the
+        # first import had a 5.35 kg arm in the URDF and 3.40 kg in the MJCF.
+        # Pure-XML checks (no mujoco/placo), plus a guard that the LFS meshes
+        # were actually fetched rather than left as pointer stubs.
+        run: |
+          git lfs pull --include "robots/rebot/**"
+          uv sync --package rebot-gripette-model --extra test
+          uv run --no-sync --package rebot-gripette-model pytest robots/rebot/rebot_gripette_model/tests -q
+
       - name: Dataset-tools unit tests
         # Python 3.11 on purpose: lerobot is marker-gated to >= 3.12, so this
         # lane installs neither lerobot nor torch. None of these tests need them.

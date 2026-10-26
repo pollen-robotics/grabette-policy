@@ -1,0 +1,6 @@
+{
+    "url": "https://cad.onshape.com/documents/f3e4785e17ed056cf9b24090/w/aa384085c240e5004e72f6be/e/8d4e7ae8fbeabcd984cf55db",
+    "robot_name": "rebot_gripette",
+    "output_format": "urdf",
+    "simplify_stls": true
+}
