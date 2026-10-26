@@ -92,6 +92,20 @@ jobs:
           uv sync --package gripette-core --extra test
           uv run --no-sync --package gripette-core pytest libs/gripette-core/tests -q
 
+      - name: reBot driver unit tests
+        # Python 3.11 on purpose: rebot-gripette gates
+        # lerobot-robot-seeed-b601 behind `python_version >= "3.12"` (the same
+        # trick openarm-gripette uses), so this lane installs no lerobot and
+        # no torch. The plugin-dependent tests skip themselves; what still
+        # RUNS here is the part that matters most before anyone powers the
+        # arm — that the home pose is not sitting on a hard stop, and that IK
+        # round-trips and stays inside the joint limits on the real model.
+        # Hardware is never touched: nothing in these tests opens a CAN bus.
+        run: |
+          git lfs pull --include "robots/rebot/**"
+          uv sync --python 3.11 --package rebot-gripette --extra test
+          uv run --no-sync --python 3.11 --package rebot-gripette pytest robots/rebot/rebot_gripette/tests -q
+
       - name: reBot model consistency
         # robot.urdf and robot.xml come from two separate onshape-to-robot
         # passes and are then mass-patched by postprocess_rebot.py. Placo reads

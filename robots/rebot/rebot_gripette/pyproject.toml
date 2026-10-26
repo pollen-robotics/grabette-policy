@@ -1,0 +1,35 @@
+[project]
+name = "rebot-gripette"
+version = "0.1.0"
+description = "reBot B601-RS + Gripette real-hardware driver and ArmService gRPC server"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    # The gRPC contract and Placo FK/IK, shared with the OpenArm so one policy
+    # drives either arm. [kinematics] because this package runs IK.
+    "gripette-core[kinematics]",
+    "rebot-gripette-model",
+    # Upstream LeRobot's Seeed B601-RS plugin. It brings motorbridge (the CAN
+    # layer) with it. Two of its defects are corrected in follower.py rather
+    # than vendored around — see that module.
+    #
+    # Marker mirrors openarm-gripette: it keeps the workspace's Python 3.11
+    # installs free of lerobot/torch, and running this driver on real hardware
+    # needs 3.12+ anyway. Without it, every workspace sync drags in torch.
+    "lerobot-robot-seeed-b601>=1.0.3 ; python_version >= '3.12'",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rebot_gripette"]
+
+[tool.uv.sources]
+gripette-core = { workspace = true }
+rebot-gripette-model = { workspace = true }
