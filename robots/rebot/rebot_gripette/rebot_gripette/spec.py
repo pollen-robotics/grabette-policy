@@ -36,11 +36,81 @@ REBOT_SPEC = ArmSpec(
     masked_dofs=("proximal", "distal"),
 )
 
-# SAFE HOME — and emphatically NOT all zeros.
+# --------------------------------------------------------------------------- #
+# Poses. Two DIFFERENT things, routinely confused:
 #
-# shoulder_lift is 0..170 deg and elbow_flex 0..200 deg: both START at zero.
-# The OpenArm homes at [0,0,0,1.57,0,0,0], and the naive translation of that
-# to this arm would sit exactly on two hard stops — every Reset would drive
-# the arm into them, and Placo's joint-limit constraint would have no room on
-# one side of either joint. tests/test_spec_and_home.py pins this down.
-HOME_JOINTS_RAD = np.deg2rad([0.0, 60.0, 60.0, 0.0, 0.0, 0.0])
+#   STARTING POSE  the robot's physical initial state — where it actually is
+#                  when you power it on. On this arm that is resting on its
+#                  hard mechanical stops. It is an observation, not a choice,
+#                  and nothing here commands it.
+#
+#   HOME POSE      the startup position FOR AN EXPERIMENT. `Reset` ramps the
+#                  arm to it, so it is the first commanded motion of a run.
+#                  It is a property of the experiment, not of the robot: on
+#                  the OpenArm it is literally the simulator's START_JOINTS,
+#                  i.e. the pose its dataset was recorded from and its policy
+#                  expects to begin at.
+#
+# There is NO reBot home pose yet, because there is no reBot experiment yet —
+# the sim scene that would define it is still to come. A value invented from
+# "somewhere inside the joint limits" would be a guess that Reset then drives
+# the arm into, and a guess that looks authoritative because it is a named
+# constant. So there is deliberately no default here.
+#
+# When the reBot sim scene exists, this must be set to ITS start joints, the
+# same way the OpenArm's is, and the two must be kept equal.
+#
+# Callers pass a home pose explicitly (see grpc_server_real.py --home_joints).
+# `check_home_pose` below enforces the constraints that are knowable from the
+# model alone; it cannot tell you the pose is right for the experiment.
+HOME_JOINTS_RAD = None
+
+# Minimum distance a commanded home pose must keep from any joint limit.
+HOME_LIMIT_MARGIN_DEG = 5.0
+
+
+def check_home_pose(joints_rad, margin_deg: float = HOME_LIMIT_MARGIN_DEG):
+    """Raise unless `joints_rad` is a usable home pose for this arm.
+
+    NECESSARY conditions only. Passing means the pose is reachable and not
+    jammed against a stop; it does NOT mean the pose is the right place to
+    start your experiment, and it knows nothing about the table, the pedestal,
+    the Gripette's envelope or self-collision.
+
+    Checks:
+      * the right number of joints,
+      * every joint at least `margin_deg` inside its URDF limit — zero is the
+        LOWER limit for both shoulder_lift and elbow_flex, so an all-zeros
+        pose is literally on two hard stops and is rejected here.
+    """
+    import math
+    import xml.etree.ElementTree as ET
+
+    from rebot_gripette_model import REBOT_B601RS_URDF
+
+    q = np.asarray(joints_rad, dtype=float)
+    if q.shape != (len(ARM_JOINT_NAMES),):
+        raise ValueError(
+            f"home pose has {q.size} joints, expected {len(ARM_JOINT_NAMES)} "
+            f"({', '.join(ARM_JOINT_NAMES)})")
+
+    root = ET.parse(REBOT_B601RS_URDF).getroot()
+    limits = {}
+    for j in root.findall("joint"):
+        lim = j.find("limit")
+        if lim is not None and lim.get("lower") is not None:
+            limits[j.get("name")] = (math.degrees(float(lim.get("lower"))),
+                                     math.degrees(float(lim.get("upper"))))
+
+    problems = []
+    for name, deg in zip(ARM_JOINT_NAMES, np.rad2deg(q)):
+        lo, hi = limits[name]
+        margin = min(deg - lo, hi - deg)
+        if margin < margin_deg:
+            problems.append(
+                f"{name}={deg:.1f} deg is {margin:.1f} deg from its limit "
+                f"[{lo:.0f}, {hi:.0f}]")
+    if problems:
+        raise ValueError(
+            "home pose is too close to a hard stop: " + "; ".join(problems))
+    return q

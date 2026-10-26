@@ -3,7 +3,7 @@
 Exposes the SAME ArmService as the OpenArm and as the simulator, because the
 service implementation is literally the same class — `gripette_core.
 arm_service.ArmServicer`. This module supplies only the reBot half: the
-ArmSpec, the home pose, the CAN-side ArmInterface and the CLI.
+ArmSpec, the CAN-side ArmInterface and the CLI.
 
     uv run python -m rebot_gripette.grpc_server_real --can can0 --arm_port 50052
 
@@ -15,10 +15,26 @@ SAFETY, READ BEFORE RUNNING
     client must call SetTorque(enable=True). Enabling re-applies the per-joint
     torque limits, because the RobStride 0x7000 range is volatile.
 
-    Home is not all zeros. shoulder_lift is 0..170 deg and elbow_flex 0..200
-    deg, so zero sits exactly on two hard stops; a reset to zero would push
-    the arm into them and leave Placo's joint-limit constraint with no room on
-    one side. HOME_JOINTS_RAD below is inside the envelope.
+    THE HOME POSE HAS NO DEFAULT, on purpose. Two different things get
+    called "home":
+
+      starting pose  where the robot physically is at power-on - on this arm,
+                     resting on its hard mechanical stops. An observation.
+      home pose      the startup position for an EXPERIMENT. `Reset` ramps the
+                     arm to it, so it is the first commanded motion of a run.
+
+    The second is a property of the experiment, not of the robot: the
+    OpenArm's is its simulator's START_JOINTS, the pose its dataset was
+    recorded from. The reBot has no such experiment yet, so there is nothing
+    to inherit and nothing to guess - a pose picked merely for being "inside
+    the limits" is still a guess, and Reset would drive the arm into it.
+
+    So --home_joints is REQUIRED. Supply six angles in degrees, in the order
+    shoulder_pan shoulder_lift elbow_flex wrist_flex wrist_yaw wrist_roll.
+    They are checked against the model (count, and >=5 deg clear of every
+    hard stop) - necessary conditions only. Nothing here knows about your
+    table, the pedestal, the Gripette's envelope or self-collision. Watch the
+    first Reset with a hand on the power.
 """
 
 import argparse
@@ -29,13 +45,14 @@ import time
 from concurrent import futures
 
 import grpc
+import numpy as np
 from gripette_core.arm_service import ArmServicer
 from gripette_core.kinematics import Kinematics
 from gripette_core.proto import arm_pb2_grpc
 
 from rebot_gripette.arm_interface import ReBotArmInterface
 from rebot_gripette.follower import ReBotFollower, ReBotFollowerConfig
-from rebot_gripette.spec import HOME_JOINTS_RAD, REBOT_SPEC
+from rebot_gripette.spec import ARM_JOINT_NAMES, REBOT_SPEC, check_home_pose
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +62,12 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--can", default="can0", help="SocketCAN interface")
+    p.add_argument(
+        "--home_joints", type=float, nargs=6, required=True, metavar="DEG",
+        help="REQUIRED. The experiment's startup pose, six angles in degrees, "
+             "in the order " + " ".join(ARM_JOINT_NAMES) + ". Reset ramps the "
+             "arm to this, so it is the first commanded motion. There is no "
+             "default: it belongs to the experiment, not the robot.")
     p.add_argument("--arm_port", type=int, default=50052)
     p.add_argument("--id", default="rebot", help="LeRobot device id (picks the calibration)")
 
@@ -72,6 +95,18 @@ def main():
     )
     start_time = time.monotonic()
 
+    # Validate the home pose BEFORE opening the CAN bus, so a bad value fails
+    # with the arm untouched rather than half-way through a connect.
+    try:
+        home_joints = check_home_pose(np.deg2rad(args.home_joints))
+    except ValueError as e:
+        logger.error(f"--home_joints rejected: {e}")
+        sys.exit(2)
+    logger.info(
+        f"Home pose (experiment startup position): "
+        f"{[round(d, 1) for d in args.home_joints]} deg. Reset will RAMP the "
+        f"arm to this - make sure it is clear of the table and of itself.")
+
     logger.info(f"Connecting to the reBot on {args.can} (id={args.id})")
     robot = ReBotFollower(ReBotFollowerConfig(port=args.can, id=args.id))
     robot.connect()
@@ -91,7 +126,7 @@ def main():
     servicer = ArmServicer(
         arm_iface,
         kin,
-        HOME_JOINTS_RAD,
+        home_joints,
         start_time,
         interp_hz=args.interp_hz,
         interp_alpha=args.interp_alpha,
