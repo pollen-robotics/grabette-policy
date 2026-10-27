@@ -15,12 +15,22 @@ SAFETY, READ BEFORE RUNNING
     client must call SetTorque(enable=True). Enabling re-applies the per-joint
     torque limits, because the RobStride 0x7000 range is volatile.
 
-    CTRL-C DOES NOT MOVE THE ARM. The upstream plugin's disconnect() calls
-    safe_zero(), which drives all six joints to motor zero - the LOWER HARD
-    STOP for shoulder_lift and elbow_flex on this arm. An interrupt must never
-    start a motion, so shutdown() suppresses it: the arm holds position, then
-    goes limp as torque is disabled. Park the arm deliberately if you want it
-    folded down; do not get there by killing the server.
+    CTRL-C DOES NOT MOVE THE ARM, AND DOES NOT DROP IT. Two separate
+    hazards live in the upstream disconnect():
+
+      safe_zero()  drives all six joints to motor zero - the LOWER HARD STOP
+                   for shoulder_lift and elbow_flex on this arm. An interrupt
+                   must never start a motion, so it is suppressed (from
+                   ReBotFollower.__init__, so even a failed connect is covered).
+      torque off   disable_torque_on_disconnect defaults True, so the motors
+                   are cut while the arm is wherever the policy left it. That
+                   is a free fall.
+
+    shutdown() therefore damps the arm to a stop before disabling: zero
+    stiffness, non-zero damping, so it sinks rather than drops. The arm still
+    ends low - damping bounds the descent, it does not hold against gravity -
+    but it arrives instead of falling. Park the arm deliberately if you want it
+    somewhere specific; do not get there by killing the server.
 
     THE HOME POSE HAS NO DEFAULT, on purpose. Two different things get
     called "home":
@@ -165,12 +175,21 @@ def main():
         sys.exit(1)
 
     def shutdown(signum, _frame):
-        logger.warning(f"Signal {signum} — stopping, disabling torque.")
+        logger.warning(f"Signal {signum} — stopping, releasing the arm.")
         servicer.stop()
         # An interrupt must not start a motion. Without this, disconnect()
         # calls safe_zero() and drives the arm to zero — two hard stops on this
         # arm. Parking is a thing a human asks for, not a side effect of Ctrl-C.
         robot.skip_safe_zero_on_disconnect()
+        try:
+            # ...and it must not drop the arm either. Cutting torque outright
+            # is a free fall from wherever the policy left it; this damps to a
+            # stop first, so the disable below happens with nothing moving.
+            # The arm still ends low — damping bounds the descent, it does not
+            # hold against gravity — but it arrives rather than falls.
+            robot.damped_release()
+        except Exception:
+            logger.exception("Damped release failed; disabling torque anyway.")
         try:
             arm_iface.set_torque(False)
         finally:

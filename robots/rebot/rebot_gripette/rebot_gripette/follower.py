@@ -55,6 +55,8 @@ NOT CHANGED
     Torque stays raw motor torque.
 """
 import logging
+import math
+import time
 from dataclasses import dataclass, field
 
 from lerobot.robots.robot import RobotConfig
@@ -62,6 +64,19 @@ from lerobot_robot_seeed_b601 import SeeedB601RSFollower, SeeedB601RSFollowerCon
 from lerobot_robot_seeed_b601.seeed_b601_follower import FOLLOWER_GRIPPER_MOTOR
 
 logger = logging.getLogger(__name__)
+
+# Damping for damped_release(): MIT with kp=0 and these kd values.
+#
+# UNMEASURED. They are the kd halves of the compliant gains from the
+# rebot-lerobot gravity demo, which were tuned WITH a non-zero kp - damping
+# alone behaves differently, and the right value is whatever makes the arm sink
+# slowly without humming. Too low is a drop with extra steps; too high may
+# oscillate. Measure before trusting them.
+RELEASE_KD = {"shoulder_pan": 0.6, "shoulder_lift": 2.5, "elbow_flex": 2.5,
+              "wrist_flex": 0.66, "wrist_yaw": 0.72, "wrist_roll": 0.72}
+RELEASE_RATE_HZ = 50.0
+RELEASE_MAX_S = 8.0
+RELEASE_STILL_DEG_S = 2.0
 
 
 def _identity_directions() -> dict[str, float]:
@@ -264,6 +279,61 @@ class ReBotFollower(SeeedB601RSFollower):
         return {k: v for k, v in obs.items()
                 if k.endswith(".pos")
                 and not k.startswith(f"{FOLLOWER_GRIPPER_MOTOR}.")}
+
+    def arm_motor_names(self):
+        """The six arm joints. Motor 7 is never commanded - see send_action."""
+        return [n for n in self.config.motor_can_ids
+                if n != FOLLOWER_GRIPPER_MOTOR]
+
+    def damped_release(self, kd=None, max_s=RELEASE_MAX_S,
+                       still_deg_s=RELEASE_STILL_DEG_S) -> bool:
+        """Stop driving the arm WITHOUT dropping it. True once it settled.
+
+        MIT with zero stiffness and non-zero damping: torque proportional to
+        minus the velocity. There is no position target to fight, so the arm
+        can be pushed by hand, but it cannot accelerate. The motors stay
+        ENERGIZED - this is a release, not a disable.
+
+        It does NOT hold the arm up. Damping bounds the descent rate; the arm
+        still sinks to where gravity takes it, which on this arm is its stops.
+        That is the point: a drop becomes a controlled sink, so the disable
+        that follows happens with the arm already at rest.
+
+        Use it wherever the arm must stop being driven but a planned ramp is
+        not available - an abort, an envelope violation, a signal. A planned
+        ending should ramp back down under position control and never rely on
+        this.
+
+        The idiom is upstream's own: detect_gripper_zero releases the gripper
+        with send_mit(0, 0, 0, 1.5, 0). The per-joint kd values are ours and
+        are unmeasured - see RELEASE_KD.
+        """
+        kd = kd or RELEASE_KD
+        names = self.arm_motor_names()
+        logger.info(f"damped release: kp=0, kd={ {n: kd[n] for n in names} }")
+
+        t0, still_since = time.time(), None
+        while (t := time.time() - t0) < max_s:
+            for name in names:
+                self.motors[name].send_mit(0.0, 0.0, 0.0, kd[name], 0.0)
+
+            speeds = [abs(math.degrees(s.vel))
+                      for s in (self.motors[n].get_state() for n in names)
+                      if s is not None]
+            worst = max(speeds) if speeds else float("inf")
+
+            if worst < still_deg_s:
+                still_since = t if still_since is None else still_since
+                if t - still_since > 0.5:
+                    logger.info(f"damped release: at rest after {t:.1f} s "
+                                f"(worst {worst:.2f} deg/s)")
+                    return True
+            else:
+                still_since = None
+            time.sleep(1.0 / RELEASE_RATE_HZ)
+
+        logger.warning(f"damped release: still moving after {max_s:.0f} s")
+        return False
 
     def skip_safe_zero_on_disconnect(self) -> None:
         """Stop `disconnect()` driving the arm to zero on the way out.

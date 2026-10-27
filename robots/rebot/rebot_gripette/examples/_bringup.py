@@ -72,6 +72,7 @@ DEG_PER_S = 2.0
 MIN_LEG_S = 2.0
 
 
+
 def urdf_limits():
     """{joint: (lower_deg, upper_deg)} from the exported model's URDF.
 
@@ -184,13 +185,37 @@ def connect_follower(can, device_id, gravity_compensation=False):
     return robot
 
 
-def disconnect_follower(robot):
-    """Teardown that does not move the arm.
+def damped_release(robot, **kwargs):
+    """Stop driving the arm without dropping it. See ReBotFollower.damped_release.
 
-    disconnect() would otherwise call safe_zero() and drive all six joints to
-    motor zero - the lower hard stop for shoulder_lift and elbow_flex. See
-    ReBotFollower.skip_safe_zero_on_disconnect.
+    Lives on the follower, not here: the gRPC server's signal handler needs the
+    same behaviour, and examples/ is not importable from the package.
     """
+    print("  [release] damping to a stop (kp=0); the arm sinks, it does not drop")
+    settled = robot.damped_release(**kwargs)
+    print("  [release] at rest" if settled else
+          "  [release] STILL MOVING - disabling anyway")
+    return settled
+
+
+def disconnect_follower(robot, release=True):
+    """Teardown that does not move the arm, and does not drop it either.
+
+    Two separate hazards, and both have bitten this arm:
+
+      * disconnect() calls safe_zero(), which drives all six joints to motor
+        zero - the lower hard stop for shoulder_lift and elbow_flex. Suppressed
+        from ReBotFollower.__init__ now, re-asserted here.
+      * disconnect() then disables every motor, because
+        disable_torque_on_disconnect defaults True. With the arm extended that
+        is a drop. On 2026-10-27 it dropped the arm from 77 degrees.
+
+    `release` damps the arm to a stop first, so the disable happens with
+    nothing moving. Pass release=False only when the arm is already at rest on
+    its stops.
+    """
+    if release:
+        damped_release(robot)
     robot.skip_safe_zero_on_disconnect()
     robot.disconnect()
     print("disconnected; the arm was not moved on the way out")

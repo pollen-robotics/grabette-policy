@@ -24,8 +24,17 @@ WHAT IT DOES, in order:
      on enable. Hold it briefly and confirm nothing moved.
   5. Interpolate to the home pose with a cosine ease at ~2 deg/s, aborting on
      deviation, torque or temperature.
-  6. Leave the arm holding, then go limp on teardown WITHOUT the plugin's
-     safe_zero sweep to motor zero.
+  6. Ramp back DOWN to the measured start pose and only then release.
+
+Step 6 is not optional politeness. disconnect() disables every motor, so
+ending a run with the arm extended means dropping it - which is exactly what
+happened on 2026-10-27, from 77 degrees. The default ending therefore returns
+the arm to where it started, on its stops, where a disable costs nothing.
+
+--stay_held skips the descent and leaves the arm up with torque on, for a
+server about to take over. Anything that goes wrong instead uses a damped
+release: zero stiffness, non-zero damping, so the arm sinks slowly rather than
+dropping. See _bringup.damped_release.
 
 Step 4 is the equivalent of the kp ramp used in the raw-CAN bring-up scripts:
 the plugin owns the gains, so the way to avoid a jolt is to start the
@@ -37,8 +46,9 @@ import sys
 import numpy as np
 
 from _bringup import (ARM_MOTORS, MOTORS, cold_read_positions, connect_follower,
-                      disconnect_follower, hold, leg_duration, motor_pose,
-                      print_pose, require_full_read, run_leg, urdf_limits)
+                      damped_release, disconnect_follower, hold, leg_duration,
+                      motor_pose, print_pose, require_full_read, run_leg,
+                      urdf_limits)
 
 
 def main():
@@ -53,6 +63,10 @@ def main():
     ap.add_argument("--deg_per_s", type=float, default=2.0,
                     help="trajectory speed; the duration follows from the move size")
     ap.add_argument("--settle_s", type=float, default=2.5)
+    ap.add_argument("--stay_held", action="store_true",
+                    help="leave the arm AT the home pose with torque on, for a "
+                         "server about to take over. Without this the arm is "
+                         "ramped back down to where it started.")
     args = ap.parse_args()
 
     from rebot_gripette.spec import ARM_JOINT_NAMES, check_home_pose
@@ -113,8 +127,43 @@ def main():
             print("Steady-state droop of 1-2 deg under gravity is expected "
                   "with gravity compensation off.")
     finally:
-        disconnect_follower(robot)
-        print("ABORTED - the arm stopped where it was." if not ok else "Done.")
+        _teardown(robot, held, duration, ok, args.stay_held)
+        print("ABORTED - the arm was released, not dropped." if not ok
+              else "Done.")
+
+
+def _teardown(robot, start_motor, duration, ok, stay_held):
+    """End in a state that does not depend on anyone catching the arm.
+
+    Three cases, and the difference matters because disconnect() disables every
+    motor:
+
+      stay_held  the arm stays up, torque on, for a server taking over. The
+                 motors are left energized deliberately; nothing here is
+                 watching them afterwards.
+      ok         ramp back down to where the arm started, on its stops, and
+                 only then release. A disable there costs nothing.
+      aborted    something is already wrong, so a ramp is not trustworthy.
+                 Damped release: the arm sinks slowly instead of dropping.
+    """
+    if stay_held:
+        print("\n--stay_held: leaving the arm at the home pose with TORQUE ON.")
+        print("Nothing is watching it now. Hand over to a server or power down.")
+        robot.config.disable_torque_on_disconnect = False
+        robot.skip_safe_zero_on_disconnect()
+        robot.disconnect()
+        return
+
+    if ok:
+        print(f"\n[return] ramping back to the start pose over {duration:.1f} s")
+        now = motor_pose(robot)
+        if run_leg(robot, now, start_motor, duration, "return"):
+            disconnect_follower(robot, release=False)   # already on its stops
+            return
+        print("  the return leg aborted - releasing from wherever it stopped")
+
+    damped_release(robot)
+    disconnect_follower(robot, release=False)           # just released
 
 
 if __name__ == "__main__":

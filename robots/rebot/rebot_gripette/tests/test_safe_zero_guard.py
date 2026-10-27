@@ -130,3 +130,17 @@ def test_every_disconnect_is_preceded_by_a_suppression():
         assert any(s < d for s in skips), (
             "a disconnect() has no suppression before it; safe_zero would "
             "already have run and the arm would already have moved")
+
+
+def test_the_server_releases_before_it_cuts_torque():
+    """Source check, like the disconnect() one above: a shutdown that disables
+    torque without damping first is a free fall from wherever the policy left
+    the arm. There is no object to assert on - the signal handler is only
+    reachable from a running server - so the ordering is pinned textually."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "rebot_gripette" / "grpc_server_real.py").read_text()
+    release = src.index("robot.damped_release()")
+    cut = src.index("arm_iface.set_torque(False)")
+    assert release < cut, (
+        "grpc_server_real.py cuts torque before damping the arm to a stop")

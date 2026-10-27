@@ -52,32 +52,30 @@ Measured 2026-10-27. Pass it explicitly; it is deliberately **not** a default,
 because the reasoning above has not changed — there is still no experiment, and
 this pose is validated against the geometry only.
 
-    --home_joints 0 75 75 0 0 0
+    --home_joints 0 15 25 -10 0 0
 
-Derived, not invented. A human held the arm roughly where it should start and
-`examples/capture_pose.py` recorded `3.2 14.8 26.5 -10.7 5.8 1.3` (median of 82
-samples, up to 9.4° of wobble — a seed, not a specification). That pose turned
-out to be **unusable**: a 10 cm square solves cleanly in the y–z plane and
-branch-flips at waypoint 22 in the other two, with part of the x–y path outside
-the reachable envelope altogether. The gripper sat 160 mm from the base, tucked
-near the shoulder axis, which is where lateral motion conditions worst.
-
-Scanning `shoulder_lift` × `elbow_flex` × `wrist_flex` for poses that trace a
-clean 10 cm square in **all three** planes returned 112 candidates, every one of
-them with `shoulder_lift ≥ 60°` and `elbow_flex ≥ 45°`. The arm has to be
-extended. The chosen pose keeps the operator's intent — gripper horizontal,
-pointing −x — and reaches out to where the kinematics work:
+It is the pose a human held, cleaned up — nothing more. `capture_pose.py`
+recorded `3.2 14.8 26.5 -10.7 5.8 1.3` (median of 82 samples, up to 9.4° of
+wobble). The cleanup rounds the angles, zeroes `shoulder_pan`, `wrist_yaw` and
+`wrist_roll` as the hand tremor they were, and sets `wrist_flex` so the
+Gripette is exactly level. The result sits **9.6 mm** from where the hand was:
 
 | | |
 |---|---|
-| control frame | x −348, y −3, z +499 mm |
-| worst joint step, 10 cm square | 5.5° against a 15° watchdog, all three planes |
-| worst IK residual | 0.00 mm |
-| nearest hard stop | 75° |
+| control frame | x −165, y −3, z +371 mm |
+| gripper pitch | 0.00°, level |
+| nearest hard stop | 15° (`shoulder_lift`) |
 
-Re-derive it if the work surface changes: the scan optimised for kinematic
-quality alone and knows nothing about a table, so a task needing the gripper
-low and pointing down wants a different member of that 112.
+The Gripette is level exactly when `shoulder_lift + elbow_flex + wrist_flex =
+30°`, so rounding and levelling are one operation.
+
+**Known limitation, recorded rather than acted on:** this pose cannot trace a
+10 cm Cartesian square in all three planes — it branch-flips in two of them,
+because the gripper sits 165 mm from the base, close to the shoulder axis,
+where lateral motion conditions worst. Poses ~120 mm further out manage it
+comfortably. Whether that matters depends on where the policy actually works,
+which rungs 4–5 will show; it is not a reason to move the home pose in
+advance.
 
 ### Starting pose, for the record
 
