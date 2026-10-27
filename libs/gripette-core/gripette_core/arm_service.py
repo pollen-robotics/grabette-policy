@@ -172,16 +172,23 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
             if self._interp_enabled:
                 target = self._latest_target_joints  # atomic read (ref assignment)
                 if target is not None:
-                    if self._current_cmd_joints is None:
-                        self._current_cmd_joints = self._arm.get_positions()
-                    # next = cur + alpha * (target - cur)
-                    self._current_cmd_joints = self._current_cmd_joints + self._interp_alpha * (
-                        target - self._current_cmd_joints
-                    )
                     try:
+                        if self._current_cmd_joints is None:
+                            # Seeding from the measured pose can RAISE: a driver
+                            # may refuse to report a pose when a motor sent no
+                            # feedback, rather than substituting 0.0 (which on
+                            # the reBot is a hard stop for two joints). Inside
+                            # the try because nothing joins this thread — an
+                            # escaping exception would stop the arm being driven
+                            # with no error surfacing anywhere.
+                            self._current_cmd_joints = self._arm.get_positions()
+                        # next = cur + alpha * (target - cur)
+                        self._current_cmd_joints = self._current_cmd_joints + self._interp_alpha * (
+                            target - self._current_cmd_joints
+                        )
                         self._arm.send_command_rad(self._current_cmd_joints)
                     except Exception as e:
-                        logger.warning(f"Interp motor write failed: {e}")
+                        logger.warning(f"Interp tick skipped: {e}")
             elapsed = time.monotonic() - tick
             sleep_for = period - elapsed
             if sleep_for > 0:

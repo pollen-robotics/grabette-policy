@@ -70,9 +70,16 @@ class FakeArm:
         self.torque = True
         self.commands = []
         self.torque_calls = []
+        # A real driver may REFUSE to report a pose rather than invent one: the
+        # reBot raises when a motor sent no feedback frame, because the plugin
+        # would otherwise substitute 0.0 deg and zero is a hard stop on two of
+        # its joints.
+        self.read_fails = False
 
     def get_positions(self):
         with self._lock:
+            if self.read_fails:
+                raise RuntimeError("no feedback from ['elbow_flex']")
             return self.positions.copy()
 
     def send_command_rad(self, joint_angles_rad):
@@ -318,3 +325,35 @@ def test_set_torque_true_holds_the_current_pose(rig):
     assert np.allclose(servicer._latest_target_joints, moved, atol=1e-9)
     _settle()
     assert np.allclose(arm.get_positions(), moved, atol=1e-3)
+
+
+# --------------------------------------------------------------------------- #
+# A driver that refuses to report a pose
+# --------------------------------------------------------------------------- #
+
+def test_the_interp_thread_survives_a_failing_read(rig):
+    """A raising get_positions() must skip a tick, not kill the interpolator.
+
+    The seeding read sits in the interp loop, and nothing joins that thread —
+    so an escaping exception would stop the arm being driven with no error
+    surfacing anywhere. This could not happen while drivers substituted 0.0 for
+    a missing reading; it can now that the reBot refuses to, which is why the
+    read belongs inside the loop's try.
+    """
+    servicer, arm, _, _ = rig
+    servicer.SetTorque(type("R", (), {"enable": True})(), _Ctx())
+    assert servicer._interp_thread.is_alive()
+
+    # Force the loop back through its seeding path, then break the read.
+    arm.read_fails = True
+    servicer._current_cmd_joints = None
+    _settle(0.15)
+    assert servicer._interp_thread.is_alive(), "interp thread died on a failed read"
+    arm.commands.clear()
+    _settle(0.1)
+    assert not arm.commands, "commanded a pose while unable to read one"
+
+    # And it recovers once feedback returns, rather than needing a restart.
+    arm.read_fails = False
+    _settle(0.2)
+    assert arm.commands, "interpolator never resumed after the read recovered"
