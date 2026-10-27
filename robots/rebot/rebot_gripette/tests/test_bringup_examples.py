@@ -27,7 +27,8 @@ import _bringup  # noqa: E402
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.parametrize("name", ["read_arm_state", "reset_arm", "set_arm_pose",
-                                  "cartesian_square", "read_torque_limits"])
+                                  "cartesian_square", "read_torque_limits",
+                                  "mirror_arm", "capture_pose"])
 def test_example_imports_without_a_bus(name):
     """A module that opens CAN at import is a trap: an IDE 'run file', a doc
     tool or a stray import would touch the arm. limits.py already had its
@@ -201,3 +202,84 @@ def test_cold_read_reports_missing_joints_instead_of_defaulting():
     assert got["shoulder_pan"] == pytest.approx(12.0)
     with pytest.raises(SystemExit, match="nothing was enabled"):
         _bringup.require_full_read(got)
+
+
+# --------------------------------------------------------------------------- #
+# The live mirror (rung 0)
+# --------------------------------------------------------------------------- #
+
+def test_the_mirror_cannot_energize_the_arm():
+    """Its whole safety claim is textual: no enable, no command, anywhere.
+
+    Unlike the other rungs there is no guard to assert on, because the point
+    is the ABSENCE of a code path. A future edit that adds a compliant mode to
+    this file must also move it off rung 0.
+    """
+    src = (EXAMPLES / "mirror_arm.py").read_text()
+    body = "\n".join(line for line in src.splitlines()
+                     if not line.lstrip().startswith("#"))
+    body = body.split('"""', 2)[-1]          # drop the module docstring
+    for forbidden in ("enable(", "send_mit(", "send_action(", "disable("):
+        assert forbidden not in body, f"mirror_arm.py may not call {forbidden}"
+
+
+def test_the_mirror_drives_the_model_from_motor_space_unchanged():
+    mirror = __import__("mirror_arm")
+    pose = {"elbow_flex": 60.0, "shoulder_pan": 10.0}
+    assert mirror.to_space(pose, "motor", None) == pose
+
+
+def test_the_vendor_mapping_mirrors_exactly_the_three_reversed_joints():
+    """The prediction the hardware run is asked to confirm by eye."""
+    mirror = __import__("mirror_arm")
+    directions = {"shoulder_pan": 1.0, "shoulder_lift": 1.0, "elbow_flex": -1.0,
+                  "wrist_flex": -1.0, "wrist_yaw": -1.0, "wrist_roll": 1.0}
+    pose = {n: 30.0 for n in directions}
+    got = mirror.to_space(pose, "vendor", directions)
+    for name, direction in directions.items():
+        assert got[name] == pytest.approx(30.0 * direction)
+
+
+def test_a_silent_joint_is_absent_so_the_viewer_holds_its_last_pose():
+    """Zero is a hard stop on two joints; a defaulted read would draw the arm
+    folded onto them and look like a real pose."""
+    mirror = __import__("mirror_arm")
+
+    class Dead:
+        def robstride_get_param_f32(self, *_):
+            raise OSError("no answer")
+
+    class Live:
+        def robstride_get_param_f32(self, *_):
+            return math.radians(45.0)
+
+    handles = {n: (Dead() if n == "elbow_flex" else Live())
+               for n, _, _ in _bringup.ARM_MOTORS}
+    got = mirror.read_positions(handles)
+    assert "elbow_flex" not in got
+    assert got["shoulder_lift"] == pytest.approx(45.0)
+
+
+# --------------------------------------------------------------------------- #
+# Capturing a held pose
+# --------------------------------------------------------------------------- #
+
+def test_the_median_rejects_a_single_drifted_sample():
+    """Why the median and not the mean: one sample taken as the holder adjusts
+    their grip must not drag the recorded pose with it."""
+    capture = __import__("capture_pose")
+    steady = [{"elbow_flex": 60.0}, {"elbow_flex": 60.2}, {"elbow_flex": 59.9}]
+    drifted = steady + [{"elbow_flex": 95.0}]
+    median, spread, n = capture.summarise(drifted)["elbow_flex"]
+    assert median == pytest.approx(60.1)
+    assert n == 4
+    # The spread still reports the excursion - it is not hidden, just not averaged in.
+    assert spread == pytest.approx(35.1)
+
+
+def test_the_spread_is_peak_to_peak_per_joint():
+    capture = __import__("capture_pose")
+    samples = [{"a": 1.0, "b": 10.0}, {"a": 3.0, "b": 10.5}, {"a": 2.0, "b": 9.5}]
+    stats = capture.summarise(samples)
+    assert stats["a"] == (pytest.approx(2.0), pytest.approx(2.0), 3)
+    assert stats["b"] == (pytest.approx(10.0), pytest.approx(1.0), 3)

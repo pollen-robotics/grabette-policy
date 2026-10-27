@@ -20,9 +20,9 @@ This package supplies only the reBot-specific half:
 
 | Piece | What |
 |---|---|
-| `follower.py` | LeRobot follower, with two upstream plugin defects corrected |
+| `follower.py` | LeRobot follower: one joint space, pinned and enforced |
 | `limits.py` | Per-joint torque clamps, re-applied on every connect |
-| `calibration.py` | Calibration-file guard and logical range handling |
+| `calibration.py` | Calibration-file guard and joint-range handling |
 | `arm_interface.py` | The three-method `ArmInterface` over motorbridge/CAN |
 | `grpc_server_real.py` | `REBOT_SPEC`, the home pose, and the CLI |
 
@@ -45,6 +45,57 @@ the arm into it.
 
 When the reBot sim scene exists (it defines the start joints), set the home
 pose from *that* and keep the two equal.
+
+### The working home pose
+
+Measured 2026-10-27. Pass it explicitly; it is deliberately **not** a default,
+because the reasoning above has not changed — there is still no experiment, and
+this pose is validated against the geometry only.
+
+    --home_joints 0 75 75 0 0 0
+
+Derived, not invented. A human held the arm roughly where it should start and
+`examples/capture_pose.py` recorded `3.2 14.8 26.5 -10.7 5.8 1.3` (median of 82
+samples, up to 9.4° of wobble — a seed, not a specification). That pose turned
+out to be **unusable**: a 10 cm square solves cleanly in the y–z plane and
+branch-flips at waypoint 22 in the other two, with part of the x–y path outside
+the reachable envelope altogether. The gripper sat 160 mm from the base, tucked
+near the shoulder axis, which is where lateral motion conditions worst.
+
+Scanning `shoulder_lift` × `elbow_flex` × `wrist_flex` for poses that trace a
+clean 10 cm square in **all three** planes returned 112 candidates, every one of
+them with `shoulder_lift ≥ 60°` and `elbow_flex ≥ 45°`. The arm has to be
+extended. The chosen pose keeps the operator's intent — gripper horizontal,
+pointing −x — and reaches out to where the kinematics work:
+
+| | |
+|---|---|
+| control frame | x −348, y −3, z +499 mm |
+| worst joint step, 10 cm square | 5.5° against a 15° watchdog, all three planes |
+| worst IK residual | 0.00 mm |
+| nearest hard stop | 75° |
+
+Re-derive it if the work surface changes: the scan optimised for kinematic
+quality alone and knows nothing about a table, so a task needing the gripper
+low and pointing down wants a different member of that 112.
+
+### Starting pose, for the record
+
+Where this arm sits at power-on, read with rung 1 on 2026-10-27:
+
+| joint | deg |
+|---|---|
+| shoulder_pan | +0.8 … +19.1 (free; wherever it was left) |
+| shoulder_lift | −0.3 (on its lower stop) |
+| elbow_flex | 0.0 (on its lower stop) |
+| wrist_flex | −0.2 |
+| wrist_yaw | +1.1 … +3.0 |
+| wrist_roll | free; wherever it was left |
+
+`shoulder_lift` and `elbow_flex` are the two that matter: both rest on their
+lower stop and read a few hundredths *past* the URDF limit, because that is
+where the limit was defined. A solver handed this pose must clamp. Supply
+measured 23.2–24.2 V across the six at idle.
 
 `spec.check_home_pose()` validates whatever you pass — correct joint count,
 and every joint ≥5° clear of a hard stop — **before** the CAN bus is opened.
@@ -103,6 +154,7 @@ hand on the power:
 
 | # | Script | Moves the arm? |
 |---|---|---|
+| 0 | `mirror_arm.py` | **No.** Torque off throughout; you move the arm by hand |
 | 1 | `read_arm_state.py` | **No.** Motors stay disabled; position comes from parameter reads |
 | 2 | `reset_arm.py --home_joints …` | Yes — the first commanded motion |
 | 3 | `set_arm_pose.py --joints …` | Yes — any absolute pose |
@@ -141,29 +193,62 @@ the `rebot-lerobot` experiments that measured it:
   the calibration pose and the wrong angle dependence everywhere else — fine
   for position control, not as a feedforward term.
 
-### Rung 1 also confirms the sign convention
+### One joint space
 
-Three spaces, two of which get confused:
+Motor degrees are the URDF's angles. Nothing in this package mirrors, scales
+or converts a joint angle anywhere, and that is enforced rather than assumed.
 
-| | What it is |
+The upstream plugin ships a `joint_directions` table — `−1.0` for
+`elbow_flex`, `wrist_flex` and `wrist_yaw`, `6.0` for `gripper`. It is not
+geometry: `6.0` is a gear ratio. It maps a **leader arm's** joint convention
+and scale onto this follower's motors, for Seeed's own teleop pairing. Worse,
+the plugin applies it on one side only:
+
+| | |
 |---|---|
-| **motor** | What the motor reports. The upstream plugin's `get_observation` is `math.degrees(state.pos)` — raw, untouched by calibration. |
-| **logical** | motor ÷ `joint_directions`, i.e. the *leader* arm's convention. Mirrored against motor on `elbow_flex`, `wrist_flex`, `wrist_yaw` (direction −1.0). `ReBotFollower.get_observation` converts into it so observation → `send_action` round-trips, which teleop, replay and rollout all need. |
-| **URDF** | **== motor.** `22_mirror.py` drove the exported model from raw `mechPos` with every sign at `+1` and confirmed joint-by-joint agreement. |
+| `send_action` | `position * joint_directions.get(name, 0.0)` |
+| `get_observation` | `math.degrees(state.pos)` — raw motor |
 
-So the follower's logical output has to be converted **back** before it reaches
-the model. `ReBotArmInterface` does that now, in both directions. An earlier
-version passed logical angles through unconverted; at a representative pose
-that put the control frame **745 mm** from where it really was, sent
-`SendCartesianDelta` the wrong way, and would have commanded a URDF-validated
-home pose mirrored — `elbow_flex` `+60°` arriving as `−60°`, past its lower
-stop at 0.
+so feeding an observation back as an action — teleop recording, dataset
+replay, policy rollout — commands the mirror of the current pose.
 
-It hid because reads *and* writes were both logical: holds held, replays
-replayed, and every round-trip test passed. Only the model disagreed, and
-nothing compared the model to the arm. `tests/test_arm_interface_space.py` now
-does, and asserts the two spaces still differ enough at the test pose to be
-able to tell.
+**This stack has no leader arm** (a policy drives it over gRPC) **and does not
+use the reBot's rack gripper** (the Gripette replaces it, on its own Feetech
+bus behind its own service). The mapping buys nothing here, so
+`ReBotFollowerConfig` pins every entry to `1.0` and the second space stops
+existing.
 
-Rung 1 prints the control-frame position under both readings, so the fix is
-confirmed against a ruler rather than only against source.
+The dict is pinned rather than emptied because `send_action` reads it with
+`.get(name, 0.0)`: a **missing** joint is multiplied by zero and commanded to
+its zero, which on this arm is a hard stop for `shoulder_lift` and
+`elbow_flex`. An empty table would be the most dangerous possible value.
+`connect()` refuses to open the bus unless every joint is present and exactly
+`1.0`, so a plugin upgrade restoring the vendor default fails loudly instead
+of silently mirroring three joints.
+
+**What this replaced.** `ReBotArmInterface` used to convert between the two
+spaces on every read and write. One early version missed the conversion, and
+at a representative pose that put the control frame **745 mm** from where it
+really was — a URDF-validated home pose would have been commanded mirrored,
+`elbow_flex` `+60°` arriving as `−60°`, past its lower stop at 0. It hid
+because reads *and* writes were in the same wrong space: holds held, replays
+replayed, every round-trip test passed. Only the model disagreed, and nothing
+compared the model to the arm. `tests/test_arm_interface_space.py` now does.
+
+### Confirming it against the hardware
+
+Source can establish which space the code uses; it cannot establish that the
+model matches the robot. Rung 0 does. `mirror_arm.py` streams the disabled
+motors' parameter reads into a live MuJoCo viewer — no torque, no command, no
+`enable()` anywhere in the file — so you move the arm by hand and watch the
+model follow. A sign error is then not a number to interpret but a joint
+visibly going the wrong way, across the whole range rather than at one pose.
+
+`--space vendor` drives the model through the vendor mapping on purpose:
+`elbow_flex`, `wrist_flex` and `wrist_yaw` should run backwards, which is what
+makes a clean `--space motor` run mean something.
+
+Rung 1 also prints the control frame, but treat it as a tape-measure sanity
+check only. At the power-on pose the three vendor-mapped joints all rest
+within a degree of zero, so a mirror would move the control frame about 4 mm —
+below the noise floor of any measurement you can make by hand.
