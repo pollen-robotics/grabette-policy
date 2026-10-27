@@ -59,6 +59,7 @@ from dataclasses import dataclass, field
 
 from lerobot.robots.robot import RobotConfig
 from lerobot_robot_seeed_b601 import SeeedB601RSFollower, SeeedB601RSFollowerConfig
+from lerobot_robot_seeed_b601.seeed_b601_follower import FOLLOWER_GRIPPER_MOTOR
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,66 @@ class ReBotFollower(SeeedB601RSFollower):
     calibration as the robot it is fixing.
     """
 
+    def __init__(self, config):
+        """Construct with safe_zero already suppressed.
+
+        The flag is set HERE, not at the call sites that shut the arm down,
+        because the dangerous case is a connect that FAILS. When connect()
+        raises part-way, this object loses its last reference, Python garbage
+        collects it, and Robot.__del__ calls disconnect() - which, with the
+        flag still False, runs safe_zero() and drives the arm to motor zero.
+        There is no shutdown path to put a guard in; the destructor IS the
+        path.
+
+        That happened on 2026-10-27: detect_gripper_zero() raised during
+        connect(), and the sweep that followed left the reBot's rack gripper
+        wide open. The arm itself was already resting on its stops, so it had
+        nowhere to be driven - had the same failure occurred after a ramp to
+        the home pose, it would have brought the arm down onto them.
+
+        This package never wants safe_zero. skip_safe_zero_on_disconnect()
+        remains for call sites that want to say so explicitly.
+        """
+        super().__init__(config)
+        if not hasattr(self, "_skip_safe_zero_on_disconnect"):
+            raise AttributeError(
+                "The upstream follower no longer has "
+                "_skip_safe_zero_on_disconnect, so disconnect() - including "
+                "the one Robot.__del__ performs after a failed connect - may "
+                "drive the arm to zero, which on this arm is two hard stops. "
+                "Re-read seeed_b601_follower.disconnect() before running.")
+        self._skip_safe_zero_on_disconnect = True
+
+    def detect_gripper_zero(self, *args, **kwargs) -> None:
+        """Deliberately does nothing. The upstream probe DRIVES motor 7.
+
+        The base class's version commands the gripper closed with torque, waits
+        for it to stall, releases, and then raises unless the motor ended
+        within a tolerance of its home position. connect() calls it.
+
+        Two reasons that must not run here. It moves a mechanism this package
+        does not control and never commands - the Gripette replaces the reBot's
+        rack gripper and lives on its own Feetech bus behind its own service.
+        And it judges that motor against a home position which is meaningless
+        for this arm, so it fails the whole connect() for a gripper nobody
+        asked about: observed at -235.29 deg on 2026-10-27, which aborted
+        rung 2 before the arm moved at all.
+        """
+
+    def send_action(self, action):
+        """Send an action with every gripper key removed. Motor 7 is READ-ONLY.
+
+        Enforced here rather than at each call site. Before today the "we never
+        command the gripper" property held because every caller happened to
+        build an arm-only action; that is a property of six separate call
+        sites agreeing, which is not a property at all once one of them
+        forgets. Motor 7 is on the bus, it is clamped, it is observed, and
+        nothing in this package commands it.
+        """
+        return super().send_action(
+            {k: v for k, v in action.items()
+             if not k.startswith(f"{FOLLOWER_GRIPPER_MOTOR}.")})
+
     def check_joint_directions(self) -> None:
         """Refuse anything but the identity. See the module docstring.
 
@@ -156,13 +217,26 @@ class ReBotFollower(SeeedB601RSFollower):
                 "anything.")
 
     def connect(self, calibrate: bool = True) -> None:
-        """Check the mapping, then connect as usual.
+        """Check the mapping and the calibration, then connect as usual.
 
         Checked here because connect() is the one gate every entry point passes
         through - the servers, the examples and the LeRobot CLI alike - and
-        because it runs before the bus is opened, so a bad config costs nothing.
+        because both checks run before the bus is opened, so a bad config or a
+        missing calibration file costs nothing.
+
+        The calibration check is not advisory. With calibrate=True the base
+        class responds to is_calibrated being False by running calibrate(),
+        which calls set_zero_position() on all seven motors and destroys the
+        zero the arm's limits are defined against. A typo in --id is enough to
+        reach it.
         """
         self.check_joint_directions()
+        if calibrate and not self.is_calibrated:
+            raise RuntimeError(
+                f"No calibration loaded from {self.calibration_fpath}. The base "
+                f"class would respond by running calibrate(), which re-zeroes "
+                f"all seven motors. Check the --id, or pass calibrate=False if "
+                f"you genuinely mean to connect uncalibrated.")
         super().connect(calibrate)
 
     def hold_action(self, observation=None):
@@ -180,9 +254,16 @@ class ReBotFollower(SeeedB601RSFollower):
 
         Wrong:
             while ...: robot.send_action(robot.hold_action())
+
+        The gripper is excluded. send_action strips it anyway, but a hold
+        action is also read by callers deciding what to command, and motor 7
+        has no business appearing in one for an arm this package treats as
+        six joints.
         """
         obs = observation if observation is not None else self.get_observation()
-        return {k: v for k, v in obs.items() if k.endswith(".pos")}
+        return {k: v for k, v in obs.items()
+                if k.endswith(".pos")
+                and not k.startswith(f"{FOLLOWER_GRIPPER_MOTOR}.")}
 
     def skip_safe_zero_on_disconnect(self) -> None:
         """Stop `disconnect()` driving the arm to zero on the way out.

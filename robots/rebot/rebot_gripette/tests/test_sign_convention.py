@@ -35,6 +35,7 @@ MOTOR_POSE = {
     "gripper": 40.0,         # vendor direction 6.0 - a gear ratio, not a sign
 }
 VENDOR_MAPPED = ("elbow_flex", "wrist_flex", "wrist_yaw", "gripper")
+ARM_JOINTS = [j for j in MOTOR_POSE if j != "gripper"]
 
 
 def _round_trip(follower, pose):
@@ -75,9 +76,11 @@ def test_the_vendor_config_really_does_transform(follower):
 # --------------------------------------------------------------------------- #
 
 def test_action_observation_round_trip_is_identity(follower):
+    """The six arm joints only - the gripper is stripped from actions, so it
+    never reaches the motor and has nothing to round-trip."""
     _, obs = _round_trip(follower, MOTOR_POSE)
-    for joint, motor_degrees in MOTOR_POSE.items():
-        assert obs[f"{joint}.pos"] == pytest.approx(motor_degrees, abs=1e-9), joint
+    for joint in ARM_JOINTS:
+        assert obs[f"{joint}.pos"] == pytest.approx(MOTOR_POSE[joint], abs=1e-9), joint
 
 
 def test_the_observation_is_the_raw_motor_angle(follower):
@@ -102,16 +105,12 @@ def test_the_vendor_mapped_joints_reach_the_motor_untouched(follower, joint):
     assert pos_rad == pytest.approx(math.radians(MOTOR_POSE[joint]))
 
 
-def test_the_gripper_is_not_scaled_by_six(follower):
-    """Vendor direction 6.0 is a gear ratio, so 40 deg would have been
-    committed as 240. Only the committed goal is checked: the gripper is driven
-    by an impedance torque, not a position, so nothing useful reaches the wire
-    as an angle. Nothing in this package commands motor 7 at all - the Gripette
-    replaces it - but the goal must still be in the same space as every other
-    joint."""
-    committed, obs = _round_trip(follower, MOTOR_POSE)
-    assert committed["gripper.pos"] == pytest.approx(40.0)
-    assert obs["gripper.pos"] == pytest.approx(40.0)
+def test_the_gripper_is_observed_in_the_same_space(follower):
+    """Vendor direction 6.0 is a gear ratio, so 40 deg of motor travel would
+    have been reported as 6.67. Motor 7 is never commanded (see below) but it
+    is still on the bus and still read, and its reading must not be rescaled."""
+    follower.motors["gripper"].set_motor_degrees(40.0)
+    assert follower.get_observation()["gripper.pos"] == pytest.approx(40.0)
 
 
 def test_velocity_and_torque_are_motor_space(follower):
@@ -152,10 +151,10 @@ def test_the_missing_direction_error_says_why_zero_is_dangerous(follower):
 # Unchanged by this
 # --------------------------------------------------------------------------- #
 
-def test_hold_action_returns_only_positions(follower):
+def test_hold_action_returns_only_arm_positions(follower):
     follower.motors["wrist_roll"].set_motor_degrees(40.0)
     held = follower.hold_action()
-    assert set(held) == {f"{j}.pos" for j in follower.motor_names}
+    assert set(held) == {f"{j}.pos" for j in ARM_JOINTS}
     assert held["wrist_roll.pos"] == pytest.approx(40.0)
 
 
@@ -168,3 +167,51 @@ def test_name_is_not_overridden():
     """
     assert "name" not in ReBotFollower.__dict__
     assert ReBotFollower.name == SeeedB601RSFollower.name
+
+
+# --------------------------------------------------------------------------- #
+# Motor 7 is read-only, and safe_zero can never run
+# --------------------------------------------------------------------------- #
+
+def test_the_gripper_is_stripped_from_every_action(follower):
+    """The reBot's rack gripper is real hardware on this arm and the Gripette
+    replaces it. Enforced in send_action rather than at each call site: before
+    this, 'we never command the gripper' held only because every caller
+    happened to build an arm-only action."""
+    committed = follower.send_action({f"{j}.pos": v for j, v in MOTOR_POSE.items()})
+    assert "gripper.pos" not in committed
+    assert follower.motors["gripper"].sent == []
+    # The six arm joints still go through untouched.
+    for joint in ARM_JOINTS:
+        assert committed[f"{joint}.pos"] == pytest.approx(MOTOR_POSE[joint])
+
+
+def test_a_gripper_only_action_commands_nothing(follower):
+    follower.send_action({"gripper.pos": 120.0})
+    assert follower.motors["gripper"].sent == []
+
+
+def test_hold_action_excludes_the_gripper(follower):
+    follower.motors["gripper"].set_motor_degrees(40.0)
+    assert "gripper.pos" not in follower.hold_action()
+
+
+def test_safe_zero_is_suppressed_from_construction(follower):
+    """Not from the shutdown path: the dangerous case is a connect that fails,
+    where Robot.__del__ performs the disconnect and no call site gets a say."""
+    assert follower._skip_safe_zero_on_disconnect is True
+
+
+def test_the_gripper_zero_probe_is_a_no_op(follower):
+    """The upstream probe DRIVES motor 7 closed with torque, then refuses the
+    whole connect unless it is near a home position that means nothing here."""
+    follower.detect_gripper_zero()
+    assert follower.motors["gripper"].sent == []
+
+
+def test_connect_refuses_without_a_calibration(follower, tmp_path):
+    """is_calibrated False plus calibrate=True makes the base class re-zero all
+    seven motors. A typo in --id is enough to reach that."""
+    follower.calibration.clear()
+    with pytest.raises(RuntimeError, match="re-zero"):
+        follower.connect()

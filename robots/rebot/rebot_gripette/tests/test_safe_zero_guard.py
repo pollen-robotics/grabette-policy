@@ -61,8 +61,20 @@ def test_safe_zero_sweeps_the_two_hard_stop_joints_last():
 # Our suppression
 # --------------------------------------------------------------------------- #
 
-def test_skip_sets_the_flag(follower):
-    assert follower._skip_safe_zero_on_disconnect is False
+def test_the_flag_is_already_set_at_construction(follower):
+    """It used to start False and be set on the shutdown path. That left the
+    worst case uncovered: when connect() raises, Robot.__del__ performs the
+    disconnect and no call site is reached. Suppression now predates any
+    possible failure."""
+    assert follower._skip_safe_zero_on_disconnect is True
+
+
+def test_skip_still_sets_the_flag_if_something_cleared_it(follower):
+    """Upstream's connect() clears the flag after its internal calibrate()
+    call. ReBotFollower.connect refuses that path outright - it raises rather
+    than let the base class re-zero the motors - so the clearing is currently
+    unreachable, but the setter must keep working rather than be decoration."""
+    follower._skip_safe_zero_on_disconnect = False
     follower.skip_safe_zero_on_disconnect()
     assert follower._skip_safe_zero_on_disconnect is True
 

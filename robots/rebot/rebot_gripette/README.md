@@ -120,32 +120,51 @@ does not persist it — only `0x2000` survives a power cycle. Limits must be
 re-applied on **every** connect, which `limits.py` does; do not "optimise"
 that away after seeing the values read back correctly within one session.
 
-## `disconnect()` wants to move the arm
+## `disconnect()` wants to move the arm, and the destructor calls it
 
 The upstream plugin's `disconnect()` calls `safe_zero()`, which interpolates
 all six arm joints to **motor zero** — and stage 2 of that sweep is CAN ids 2
 and 3, i.e. `shoulder_lift` and `elbow_flex`, the two joints whose zero *is*
-their lower hard stop. So an unmodified disconnect lowers the arm onto its
-stops.
+their lower hard stop. Stage 2 also reaches for the gripper: *"if it is
+currently past 180°, bring it back toward 170°"*. So an unmodified disconnect
+lowers the arm onto its stops and moves motor 7.
 
-Parking the arm is fine when a human asks for it. Happening because someone hit
-Ctrl-C is not — an interrupt is the one moment a motion must never start. The
-server calls `ReBotFollower.skip_safe_zero_on_disconnect()` before **every**
-`disconnect()`, so the arm holds position and then goes limp.
+`ReBotFollower.__init__` sets `_skip_safe_zero_on_disconnect = True` at
+**construction**, and that placement is the whole point.
 
-Two things worth knowing:
+The obvious place for the guard is the shutdown path, and that is where it was
+first put: before each `disconnect()` in the server. It is not enough. The
+dangerous case is a connect that **fails** — then the object loses its last
+reference, Python garbage-collects it, `Robot.__del__` calls `disconnect()`,
+and no call site ever gets a say. That is not hypothetical: on 2026-10-27
+`detect_gripper_zero()` raised during rung 2's connect, the destructor ran the
+sweep, and it left the rack gripper wide open. The arm was still folded on its
+stops with nowhere to be driven; the same failure after a ramp to the home pose
+would have brought it down onto them.
 
-- This was already the behaviour, *by accident*: torque is disabled first,
-  disabled RobStride motors emit no feedback, `safe_zero`'s position read
-  raised, and `disconnect()` swallowed the exception. A plugin update that
-  merely fixed the exception path would have silently restored the motion.
-- The accident never covered the single-instance guard's cleanup path. There,
-  `connect()` has already run on a bus a *first* server is driving with torque
-  live, so feedback works and `safe_zero` would really haul the arm to zero
-  while the other process commands it.
+Parking the arm is fine when a human asks for it. Happening because a connect
+threw is not.
 
-`tests/test_safe_zero_guard.py` pins both the upstream premise and our
-suppression, and fails if a `disconnect()` ever appears without one.
+`tests/test_safe_zero_guard.py` pins the upstream premise and the suppression,
+and fails if a `disconnect()` ever appears without one.
+
+## Motor 7 is read-only
+
+The reBot's rack gripper is still physically mounted and still on the CAN bus,
+but the Gripette replaces it and serves its own `GripperService` over Feetech.
+Nothing in this package commands motor 7, and that is enforced in one place —
+`ReBotFollower.send_action` strips every `gripper.*` key before delegating, and
+`hold_action()` leaves it out.
+
+Enforced centrally because the property used to rest on six separate call sites
+each happening to build an arm-only action, which is not a property at all once
+one of them forgets.
+
+`detect_gripper_zero()` is overridden to do nothing for the same reason. The
+upstream version drives the gripper closed with torque, waits for a stall,
+releases, and then raises unless the motor is near a home position that is
+meaningless for this arm — and `connect()` calls it, so a gripper nobody asked
+about can abort the whole bring-up. It measured −235.29° and did exactly that.
 
 ## Bring-up order
 
