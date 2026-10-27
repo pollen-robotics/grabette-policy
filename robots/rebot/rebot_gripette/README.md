@@ -175,6 +175,7 @@ hand on the power:
 |---|---|---|
 | 0 | `mirror_arm.py` | **No.** Torque off throughout; you move the arm by hand |
 | 1 | `read_arm_state.py` | **No.** Motors stay disabled; position comes from parameter reads |
+| 1.5 | `check_connect.py` | Energizes, holds where the arm already is. No trajectory |
 | 2 | `reset_arm.py --home_joints …` | Yes — the first commanded motion |
 | 3 | `set_arm_pose.py --joints …` | Yes — any absolute pose |
 | 4 | `cartesian_square.py --size_cm 2` | Yes — first rung with IK in the loop |

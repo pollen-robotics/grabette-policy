@@ -28,7 +28,7 @@ import _bringup  # noqa: E402
 
 @pytest.mark.parametrize("name", ["read_arm_state", "reset_arm", "set_arm_pose",
                                   "cartesian_square", "read_torque_limits",
-                                  "mirror_arm", "capture_pose"])
+                                  "mirror_arm", "capture_pose", "check_connect"])
 def test_example_imports_without_a_bus(name):
     """A module that opens CAN at import is a trap: an IDE 'run file', a doc
     tool or a stray import would touch the arm. limits.py already had its
@@ -283,3 +283,11 @@ def test_the_spread_is_peak_to_peak_per_joint():
     stats = capture.summarise(samples)
     assert stats["a"] == (pytest.approx(2.0), pytest.approx(2.0), 3)
     assert stats["b"] == (pytest.approx(10.0), pytest.approx(1.0), 3)
+
+
+def test_the_connect_check_never_builds_a_trajectory():
+    """Rung 1.5 exists to exercise the connect path WITHOUT a move. If it ever
+    grows a run_leg it is rung 2 again and has stopped isolating anything."""
+    src = (EXAMPLES / "check_connect.py").read_text()
+    assert "run_leg" not in src
+    assert "leg_duration" not in src
