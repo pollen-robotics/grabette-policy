@@ -266,7 +266,10 @@ def run_leg(robot, start_motor, end_motor, duration_s, label,
         if t >= next_sample:
             now = motor_pose(robot)
             reason = _envelope_violation(robot, targets, now, abort_deg)
-            shown = "  ".join(f"{n.split('_')[0]}={now[n]:+7.2f}"
+            # Full joint names: shoulder_pan and shoulder_lift both abbreviate
+            # to "shoulder", which is ambiguous exactly when someone is reading
+            # this line closely.
+            shown = "  ".join(f"{n}={now[n]:+7.2f}"
                               for n in (moving or list(end_motor)[:2]))
             print(f"  {label} t={t:5.2f}  {shown}")
             if reason:
