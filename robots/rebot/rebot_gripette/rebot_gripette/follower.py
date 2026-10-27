@@ -156,6 +156,39 @@ class ReBotFollower(SeeedB601RSFollower):
         obs = observation if observation is not None else self.get_observation()
         return {k: v for k, v in obs.items() if k.endswith(".pos")}
 
+    def skip_safe_zero_on_disconnect(self) -> None:
+        """Stop `disconnect()` driving the arm to zero on the way out.
+
+        The base class's disconnect() calls safe_zero(), which interpolates all
+        six arm joints to MOTOR ZERO in two stages - stage 2 being CAN ids 2
+        and 3, i.e. shoulder_lift and elbow_flex. On this arm zero is the LOWER
+        HARD STOP for exactly those two joints, so a plain disconnect lowers
+        the arm onto its stops.
+
+        That is a defensible park when a human asked for one. It is not
+        defensible on SIGINT: the one thing an interrupt must never do is start
+        a motion. Callers shutting down in response to a signal call this
+        first, so the arm holds position and then goes limp.
+
+        This was ALREADY the effective behaviour, but only by accident: torque
+        was disabled first, disabled RobStride motors emit no feedback frames,
+        safe_zero's position read therefore raised, and disconnect() swallowed
+        it with logger.exception. Relying on that meant a plugin update which
+        merely fixed the exception path would silently restore the motion.
+
+        Reaches into a private attribute of the upstream plugin because there
+        is no public knob - `disable_torque_on_disconnect` does not gate
+        safe_zero. The guard below turns a rename or removal into a loud
+        failure here, rather than an unannounced move of the arm.
+        """
+        if not hasattr(self, "_skip_safe_zero_on_disconnect"):
+            raise AttributeError(
+                "The upstream follower no longer has "
+                "_skip_safe_zero_on_disconnect, so disconnect() may once again "
+                "drive the arm to zero - which on this arm is two hard stops. "
+                "Re-read seeed_b601_follower.disconnect() before running.")
+        self._skip_safe_zero_on_disconnect = True
+
 
 if __name__ == "__main__":
     # Offline check of the transform, no hardware needed: assert that a pose

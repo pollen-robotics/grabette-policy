@@ -47,12 +47,45 @@ class ReBotArmInterface:
 
     # -- reads ------------------------------------------------------------
     def get_positions(self) -> np.ndarray:
-        """Arm joint positions in radians, in ARM_JOINT_NAMES order.
+        """Arm joint positions in radians, MOTOR space, in ARM_JOINT_NAMES order.
 
-        Reads through `ReBotFollower.get_observation()`, which is the fixed
-        one: it divides by joint_directions so observations come back in the
-        same space `send_action` expects. Reading the raw upstream follower
-        here would mirror elbow_flex, wrist_flex and wrist_yaw.
+        MOTOR SPACE, NOT LOGICAL SPACE, and the distinction is load-bearing
+        because these radians go straight into Kinematics as URDF angles.
+
+        Three spaces, two of which get confused:
+
+          motor    what the motor reports. `22_mirror.py` drove the exported
+                   model from raw mechPos reads with all signs at +1 and
+                   confirmed joint-by-joint agreement, so the exported URDF IS
+                   motor space. The upstream plugin's get_observation also
+                   reports exactly this (math.degrees(state.pos), untouched by
+                   calibration).
+          logical  motor / joint_directions, i.e. the LEADER arm's convention.
+                   `ReBotFollower.get_observation` converts into it so that
+                   observation -> send_action round-trips, which is what
+                   teleop, replay and policy rollout need. It is mirrored
+                   against motor space on elbow_flex, wrist_flex and wrist_yaw
+                   (direction -1.0).
+          URDF     == motor, per the mirror above.
+
+        So the follower's logical output must be converted BACK before it
+        reaches the model. An earlier version of this method passed it through
+        unconverted; the three mirrored joints then put the control frame
+        745 mm from where it really was at a representative pose, sent
+        SendCartesianDelta the wrong way, and would have commanded a
+        URDF-validated home pose mirrored - elbow_flex +60 deg arriving as
+        -60 deg, past its lower stop at 0. It hid because reads and writes
+        were both in logical space, so holds held and every round-trip test
+        passed; only the model disagreed, and nothing compared the model to
+        the arm.
+
+        Raises RuntimeError if any arm joint produced no feedback frame. The
+        plugin substitutes 0.0 for a silent motor rather than reporting the
+        gap, and 0 rad is the lower hard stop for shoulder_lift and
+        elbow_flex - so a single dropped frame would otherwise tell the
+        servicer the arm is folded onto its stops and let it interpolate from
+        there. Staleness is NOT covered: motorbridge keeps the last state, so
+        this catches "never arrived", not "arrived a while ago".
         """
         now = time.monotonic()
         if (self._cached_positions_rad is not None
@@ -65,18 +98,42 @@ class ReBotArmInterface:
                     and (now - self._cached_positions_ts) < self._state_cache_ttl):
                 return self._cached_positions_rad.copy()
             obs = self._robot.get_observation()
-            deg = np.array([obs[f"{n}.pos"] for n in ARM_JOINT_NAMES],
-                           dtype=np.float64)
+
+            # get_observation() has just polled, so a None state here is
+            # exactly the condition under which it substituted 0.0.
+            silent = [n for n in ARM_JOINT_NAMES
+                      if self._robot.motors[n].get_state() is None]
+            if silent:
+                raise RuntimeError(
+                    f"No feedback from {silent}. The plugin reports 0.0 deg "
+                    f"for a silent motor, and zero is the lower hard stop for "
+                    f"shoulder_lift and elbow_flex - refusing to report a pose "
+                    f"that would read as the arm folded onto its stops.")
+
+            deg = np.array(
+                [self._robot.logical_to_motor(n, obs[f"{n}.pos"])
+                 for n in ARM_JOINT_NAMES], dtype=np.float64)
             self._cached_positions_rad = deg * DEG_TO_RAD
             self._cached_positions_ts = time.monotonic()
             return self._cached_positions_rad.copy()
 
     # -- writes -----------------------------------------------------------
     def send_command_rad(self, joint_angles_rad: np.ndarray) -> None:
-        """Command the six arm joints. The gripper motor is never touched."""
+        """Command the six arm joints in MOTOR space. The gripper is untouched.
+
+        Same space as `get_positions`, so a pose read back and sent straight
+        out is a no-op, and so a target computed by the IK from the model is
+        commanded as the model meant it.
+
+        send_action() multiplies by joint_directions on the way to the wire,
+        so the motor-space target is converted to logical first and the two
+        cancel. Skipping this conversion mirrors elbow_flex, wrist_flex and
+        wrist_yaw - which on elbow_flex (0..200 deg) means commanding a valid
+        +60 deg target as -60 deg, well past its lower stop.
+        """
         deg = np.asarray(joint_angles_rad, dtype=np.float64) * RAD_TO_DEG
-        action = {f"{ARM_JOINT_NAMES[i]}.pos": float(deg[i])
-                  for i in range(len(ARM_JOINT_NAMES))}
+        action = {f"{n}.pos": self._robot.motor_to_logical(n, float(deg[i]))
+                  for i, n in enumerate(ARM_JOINT_NAMES)}
         with self._lock:
             self._robot.send_action(action)
 

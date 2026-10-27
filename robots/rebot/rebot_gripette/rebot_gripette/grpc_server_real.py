@@ -15,6 +15,13 @@ SAFETY, READ BEFORE RUNNING
     client must call SetTorque(enable=True). Enabling re-applies the per-joint
     torque limits, because the RobStride 0x7000 range is volatile.
 
+    CTRL-C DOES NOT MOVE THE ARM. The upstream plugin's disconnect() calls
+    safe_zero(), which drives all six joints to motor zero - the LOWER HARD
+    STOP for shoulder_lift and elbow_flex on this arm. An interrupt must never
+    start a motion, so shutdown() suppresses it: the arm holds position, then
+    goes limp as torque is disabled. Park the arm deliberately if you want it
+    folded down; do not get there by killing the server.
+
     THE HOME POSE HAS NO DEFAULT, on purpose. Two different things get
     called "home":
 
@@ -148,12 +155,22 @@ def main():
             f"Could not bind port {args.arm_port} — another server is almost "
             f"certainly already running. Refusing to start a second one.")
         servicer.stop()
+        # Worse here than on Ctrl-C. connect() has already run, on a bus the
+        # FIRST server is actively driving with torque enabled — so feedback is
+        # live and safe_zero would genuinely succeed in hauling the arm to zero
+        # while the other process commands it. The "disabled motors can't be
+        # read, so safe_zero raises" accident does not save us in this path.
+        robot.skip_safe_zero_on_disconnect()
         robot.disconnect()
         sys.exit(1)
 
     def shutdown(signum, _frame):
         logger.warning(f"Signal {signum} — stopping, disabling torque.")
         servicer.stop()
+        # An interrupt must not start a motion. Without this, disconnect()
+        # calls safe_zero() and drives the arm to zero — two hard stops on this
+        # arm. Parking is a thing a human asks for, not a side effect of Ctrl-C.
+        robot.skip_safe_zero_on_disconnect()
         try:
             arm_iface.set_torque(False)
         finally:

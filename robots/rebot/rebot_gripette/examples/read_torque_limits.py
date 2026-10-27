@@ -17,13 +17,8 @@ persist it (only 0x2000 survives). Every connect must re-apply them.
 """
 import argparse
 
+from _bringup import MOTORS          # (joint, CAN id, model); _bringup imports nothing heavy
 from rebot_gripette.limits import apply_limits
-
-# (joint, CAN id, RobStride model). Joints 1-3 are RS-06, 4-7 RS-00.
-MOTORS = [("shoulder_pan", 1, "rs-06"), ("shoulder_lift", 2, "rs-06"),
-          ("elbow_flex", 3, "rs-06"), ("wrist_flex", 4, "rs-00"),
-          ("wrist_yaw", 5, "rs-00"), ("wrist_roll", 6, "rs-00"),
-          ("gripper", 7, "rs-00")]
 
 
 def main():

@@ -41,6 +41,7 @@ class FakeMotor:
         self.state = FakeState()
         self.sent = []          # (kind, *args) of every command "sent"
         self.params = {}        # robstride_write_param_f32 register writes
+        self._silenced = None   # state stashed while silent, so it can return
 
     # --- feedback path -------------------------------------------------
     def request_feedback(self):
@@ -52,6 +53,21 @@ class FakeMotor:
     def set_motor_degrees(self, degrees):
         """Place the motor at `degrees` of MOTOR-space travel."""
         self.state.pos = math.radians(degrees)
+
+    def set_silent(self, silent=True):
+        """Simulate a dropped feedback frame: get_state() returns None.
+
+        Worth a real affordance rather than assigning `state = None` in a
+        test, because it is reversible: the plugin substitutes 0.0 deg for a
+        silent motor, and a test that cannot un-silence one cannot check that
+        the arm recovers afterwards.
+        """
+        if silent:
+            if self.state is not None:
+                self._silenced = self.state
+            self.state = None
+        else:
+            self.state = self._silenced or FakeState()
 
     # --- command path --------------------------------------------------
     def send_mit(self, pos, vel, kp, kd, tau):

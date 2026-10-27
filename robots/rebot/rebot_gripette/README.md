@@ -69,16 +69,101 @@ does not persist it — only `0x2000` survives a power cycle. Limits must be
 re-applied on **every** connect, which `limits.py` does; do not "optimise"
 that away after seeing the values read back correctly within one session.
 
+## `disconnect()` wants to move the arm
+
+The upstream plugin's `disconnect()` calls `safe_zero()`, which interpolates
+all six arm joints to **motor zero** — and stage 2 of that sweep is CAN ids 2
+and 3, i.e. `shoulder_lift` and `elbow_flex`, the two joints whose zero *is*
+their lower hard stop. So an unmodified disconnect lowers the arm onto its
+stops.
+
+Parking the arm is fine when a human asks for it. Happening because someone hit
+Ctrl-C is not — an interrupt is the one moment a motion must never start. The
+server calls `ReBotFollower.skip_safe_zero_on_disconnect()` before **every**
+`disconnect()`, so the arm holds position and then goes limp.
+
+Two things worth knowing:
+
+- This was already the behaviour, *by accident*: torque is disabled first,
+  disabled RobStride motors emit no feedback, `safe_zero`'s position read
+  raised, and `disconnect()` swallowed the exception. A plugin update that
+  merely fixed the exception path would have silently restored the motion.
+- The accident never covered the single-instance guard's cleanup path. There,
+  `connect()` has already run on a bus a *first* server is driving with torque
+  live, so feedback works and `safe_zero` would really haul the arm to zero
+  while the other process commands it.
+
+`tests/test_safe_zero_guard.py` pins both the upstream premise and our
+suppression, and fails if a `disconnect()` ever appears without one.
+
 ## Bring-up order
 
 Never skip a rung, and never run any of it without a human in the loop and a
 hand on the power:
 
-1. `read_arm_state` — no motion, confirms the bus and the sign conventions
-2. `reset_arm` — the ramp to home
-3. `set_arm_pose` — a single absolute pose
-4. `cartesian_square` 2 cm
-5. `cartesian_square` 10 cm
+| # | Script | Moves the arm? |
+|---|---|---|
+| 1 | `read_arm_state.py` | **No.** Motors stay disabled; position comes from parameter reads |
+| 2 | `reset_arm.py --home_joints …` | Yes — the first commanded motion |
+| 3 | `set_arm_pose.py --joints …` | Yes — any absolute pose |
+| 4 | `cartesian_square.py --size_cm 2` | Yes — first rung with IK in the loop |
+| 5 | `cartesian_square.py --size_cm 10` | Yes |
+
+`cartesian_square.py --dry_run --from_joints …` solves the whole path offline
+and reports the IK residual and largest joint step per waypoint. Run it before
+the hardware rung: if the dry run cannot close the square, the arm certainly
+cannot, and nothing had to move to find out.
 
 If the 10 cm square is not clean, stop. The OpenArm README is blunt about why:
 a policy run on an arm that cannot trace a square produces garbage silently.
+
+Shared discipline, all in `examples/_bringup.py`, every constant traced back to
+the `rebot-lerobot` experiments that measured it:
+
+- **Preflight reads disabled motors.** A RobStride sends no feedback frames
+  until enabled, so `get_state()` is `None` beforehand. A joint that does not
+  answer is *absent* from the read, never `0.0` — zero is a hard stop on two of
+  these joints, so a defaulted read is a command into one. Refuse to energize
+  an arm you cannot fully read.
+- **The first commanded pose is the measured pose.** Scripts 11/12 ramped `kp`
+  from 0 over 1.5 s so the arm never got a step change. Through the plugin the
+  gains are not ours to ramp, so the equivalent is to begin the trajectory
+  exactly where the arm already is.
+- **All six joints are held,** not just the one moving — unpowered links swing
+  off their stops unpredictably.
+- **Abort envelope** on every leg: position deviation (5°), torque (80 % of the
+  per-joint clamp) and MOSFET temperature (60 °C). An abort leaves the arm
+  holding, not dropped.
+- **`max_relative_target = 5.0`,** not 2.0: steady-state droop under gravity is
+  already 1–2°, so a 2° cap clamps continuously during normal motion.
+- **Gravity compensation defaults off.** The exported inertias still put each
+  link's COM at its motor, so the predicted torque has the right magnitude at
+  the calibration pose and the wrong angle dependence everywhere else — fine
+  for position control, not as a feedforward term.
+
+### Rung 1 also confirms the sign convention
+
+Three spaces, two of which get confused:
+
+| | What it is |
+|---|---|
+| **motor** | What the motor reports. The upstream plugin's `get_observation` is `math.degrees(state.pos)` — raw, untouched by calibration. |
+| **logical** | motor ÷ `joint_directions`, i.e. the *leader* arm's convention. Mirrored against motor on `elbow_flex`, `wrist_flex`, `wrist_yaw` (direction −1.0). `ReBotFollower.get_observation` converts into it so observation → `send_action` round-trips, which teleop, replay and rollout all need. |
+| **URDF** | **== motor.** `22_mirror.py` drove the exported model from raw `mechPos` with every sign at `+1` and confirmed joint-by-joint agreement. |
+
+So the follower's logical output has to be converted **back** before it reaches
+the model. `ReBotArmInterface` does that now, in both directions. An earlier
+version passed logical angles through unconverted; at a representative pose
+that put the control frame **745 mm** from where it really was, sent
+`SendCartesianDelta` the wrong way, and would have commanded a URDF-validated
+home pose mirrored — `elbow_flex` `+60°` arriving as `−60°`, past its lower
+stop at 0.
+
+It hid because reads *and* writes were both logical: holds held, replays
+replayed, and every round-trip test passed. Only the model disagreed, and
+nothing compared the model to the arm. `tests/test_arm_interface_space.py` now
+does, and asserts the two spaces still differ enough at the test pose to be
+able to tell.
+
+Rung 1 prints the control-frame position under both readings, so the fix is
+confirmed against a ruler rather than only against source.
