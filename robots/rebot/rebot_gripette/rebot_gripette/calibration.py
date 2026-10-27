@@ -13,14 +13,15 @@ THE BUG
     machinery would see elbow_flex mis-scaled by more than 2x.
 
 WHICH SPACE THE RANGES BELONG IN
-    send_action multiplies by joint_directions, so config.joint_limits are
-    MOTOR-space bounds. With the observation fix in follower.py, the values
-    that actually appear in observations and actions are LOGICAL space. So the
-    ranges must be limits / direction - which reverses min and max wherever
-    direction is negative, and rescales the gripper by 6.
+    The space observations and actions actually use, which for this package is
+    motor space: ReBotFollowerConfig pins joint_directions to the identity, so
+    config.joint_limits ARE the recorded ranges.
 
-    elbow_flex direction -1.0:  motor 0..200   ->  logical -200..0
-    gripper    direction  6.0:  motor 0..270   ->  logical    0..45
+    The division by direction below is therefore a no-op with our config, and
+    is kept only because this module also runs against the vendor config, for
+    which it is not - there, elbow_flex -1.0 maps motor 0..200 to -200..0 and
+    gripper 6.0 maps motor 0..270 to 0..45. Passing the wrong config writes a
+    file in the wrong space, which is why the default here is ours.
 
 WHAT IS DELIBERATELY LEFT ALONE
     homing_offset and drive_mode stay 0. This plugin zeroes via
@@ -33,7 +34,9 @@ import math
 import shutil
 from pathlib import Path
 
-from lerobot_robot_seeed_b601 import SeeedB601RSFollower, SeeedB601RSFollowerConfig
+from lerobot_robot_seeed_b601 import SeeedB601RSFollower
+
+from rebot_gripette.follower import ReBotFollowerConfig
 
 # The URDF models 0..180 for elbow_flex while the plugin config permits 0..200.
 # Those extra 20 degrees are outside the dynamics model and any IK built on it.
@@ -42,7 +45,7 @@ URDF_LIMITS = {"shoulder_pan": (-160, 160), "shoulder_lift": (0, 180),
                "wrist_yaw": (-90, 90), "wrist_roll": (-180, 180)}
 
 
-def logical_ranges(config):
+def calibration_ranges(config):
     """Per-joint (min, max) in the space observations and actions use.
 
     Returns INTEGERS: MotorCalibration.range_min/range_max are typed int, and
@@ -68,9 +71,9 @@ def fix_calibration_file(path, config=None, backup=True):
     does not disturb the calibration you already performed.
     """
     path = Path(path)
-    config = config or SeeedB601RSFollowerConfig(id="_", port="can0")
+    config = config or ReBotFollowerConfig(id="_", port="can0")
     data = json.loads(path.read_text())
-    ranges = logical_ranges(config)
+    ranges = calibration_ranges(config)
 
     if backup:
         bak = path.with_suffix(".json.orig")
@@ -78,7 +81,7 @@ def fix_calibration_file(path, config=None, backup=True):
             shutil.copy2(path, bak)
             print(f"backup: {bak}")
 
-    print(f"{'joint':<15}{'was':>16}{'now (logical)':>20}{'motor space':>16}")
+    print(f"{'joint':<15}{'was':>16}{'now':>20}{'motor space':>16}")
     for name, entry in data.items():
         if name not in ranges:
             continue
@@ -115,7 +118,7 @@ class CalibratedRangesMixin:
         super().calibrate()
         if not self.calibration:
             return
-        for name, (lo, hi) in logical_ranges(self.config).items():
+        for name, (lo, hi) in calibration_ranges(self.config).items():
             if name in self.calibration:
                 self.calibration[name].range_min = lo
                 self.calibration[name].range_max = hi

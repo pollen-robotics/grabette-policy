@@ -36,9 +36,16 @@ def test_device_class_is_reachable_from_the_parent_package():
     assert getattr(rebot_gripette, ReBotFollower.__name__) is ReBotFollower
 
 
-def test_config_adds_no_fields_of_its_own():
-    """Every numeric default is inherited from the upstream config unchanged."""
+def test_config_overrides_exactly_one_default():
+    """joint_directions is pinned to the identity (see follower.py); every
+    other numeric default is inherited from upstream unchanged.
+
+    Pinned here as an exact set: a second silent override would be a second
+    place the arm's behaviour diverges from the plugin's documentation.
+    """
     from lerobot_robot_seeed_b601 import SeeedB601RSFollowerConfig
 
     assert issubclass(ReBotFollowerConfig, SeeedB601RSFollowerConfig)
-    assert ReBotFollowerConfig.__dict__.get("__annotations__", {}) == {}
+    assert set(ReBotFollowerConfig.__dict__.get("__annotations__", {})) == {
+        "joint_directions"}
+    assert set(ReBotFollowerConfig(id="_", port="can0").joint_directions.values()) == {1.0}

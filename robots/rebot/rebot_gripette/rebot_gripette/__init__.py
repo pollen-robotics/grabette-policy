@@ -54,7 +54,7 @@ _EXPORTS = {
     "CalibratedRangesMixin": ".calibration",
     "URDF_LIMITS": ".calibration",
     "fix_calibration_file": ".calibration",
-    "logical_ranges": ".calibration",
+    "calibration_ranges": ".calibration",
 }
 
 __all__ = sorted(_EXPORTS)

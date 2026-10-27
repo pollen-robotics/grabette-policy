@@ -1,44 +1,61 @@
-"""reBot B601-RS follower with the observation/action sign convention reconciled.
+"""reBot B601-RS follower, pinned to a single joint space.
 
-THE BUG
-    The upstream plugin's get_observation() returns raw motor degrees:
-        obs["elbow_flex.pos"] = math.degrees(state.pos)
+THE VENDOR MAPPING, AND WHY IT IS GONE
+    The upstream config ships
+        joint_directions = {elbow_flex: -1.0, wrist_flex: -1.0,
+                            wrist_yaw: -1.0, gripper: 6.0, ...}
+    which is not geometry - `gripper: 6.0` is a gear ratio, not a sign. The
+    dict maps a LEADER arm's joint convention and scale onto this follower's
+    motors, for Seeed's own leader/follower teleop pairing.
 
-    while its send_action() multiplies every target by joint_directions before
-    clipping:
-        position = position * self.config.joint_directions[motor_name]
+    The plugin then applies it on one side only:
+        send_action      position * joint_directions.get(name, 0.0)   (:655)
+        get_observation  math.degrees(state.pos)  - raw motor          (:618)
+    so observation and action speak different spaces. Feeding an observation
+    straight back as an action - the core LeRobot pattern behind teleop
+    recording, dataset replay and policy rollout - therefore commands the
+    MIRROR of the current pose on the three joints with direction -1.0, and
+    scales the gripper by 6.
 
-    So the two APIs speak different spaces. Feeding an observation straight back
-    as an action - the core LeRobot pattern behind teleop recording, dataset
-    replay and policy rollout - commands the MIRROR of the current pose on every
-    joint with direction -1.0 (elbow_flex, wrist_flex, wrist_yaw), and scales
-    gripper by 6x.
+    This stack has no leader arm: a policy drives the arm over gRPC. It also
+    does not use the reBot's rack gripper, which the Gripette replaces on its
+    own Feetech bus behind its own service. So the mapping buys nothing here
+    and costs an entire second joint space to keep straight. Every entry is
+    pinned to 1.0 below.
 
-WHY FIX THE OBSERVATION AND NOT THE ACTION
-    joint_directions maps a leader arm's convention onto the motor's, so
-    send_action applying it is deliberate: a Star-Arm-102 leader emits logical
-    angles that must be flipped for this follower. The coherent fix is to have
-    get_observation report in that same logical space, so that
+ONE SPACE
+    motor degrees == the URDF's angles == what send_action takes == what
+    get_observation returns. The export was validated against raw mechPos
+    (rebot-lerobot/22_mirror.py) and confirmed again on hardware with
+    examples/mirror_arm.py, so motor space is the model's space and there is
+    nothing left to convert.
 
-        logical -> send_action -> (x direction) -> motor
-        motor   -> get_observation -> (/ direction) -> logical
+    That is the point of pinning rather than converting: a transform whose only
+    job is to undo a vendor inconsistency is a transform someone eventually
+    applies twice, or not at all. The cost of getting it wrong is a pose
+    mirrored on three joints - elbow_flex +60 deg arriving as -60, which is
+    past its lower stop at zero.
 
-    round-trips. Stripping direction from send_action would instead break
-    leader-driven teleop.
+WHY THE DICT IS PINNED AND NOT EMPTIED
+    send_action looks up `joint_directions.get(motor_name, 0.0)`. A joint
+    MISSING from the dict is multiplied by zero - that is, commanded to its
+    zero position - and on this arm zero is the lower hard stop for
+    shoulder_lift and elbow_flex. An empty dict would be the most dangerous
+    possible value, so every joint stays present with an explicit 1.0.
+
+    connect() refuses to open the bus if anything has put a non-identity value
+    back, so a plugin upgrade restoring the vendor default fails loudly instead
+    of silently mirroring three joints.
 
 NOT CHANGED
-    send_action, and the max_relative_target clamp inside it. Both already
-    operate consistently in motor space - the clamp compares a direction-applied
-    goal against a raw present position, which is the same space. The warning
-    flood seen earlier was a symptom of feeding it mirrored goals, not of the
-    clamp itself being wrong.
+    send_action, and the max_relative_target clamp inside it: with identity
+    directions the clamp compares a motor-space goal against a motor-space
+    present position, which is the same space.
 
-    Torque is left as raw motor torque. joint_directions is a scale as well as a
-    sign (gripper is 6.0), and dividing a torque by a kinematic gear factor is
-    not physically meaningful. Documented rather than silently transformed.
+    Torque stays raw motor torque.
 """
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from lerobot.robots.robot import RobotConfig
 from lerobot_robot_seeed_b601 import SeeedB601RSFollower, SeeedB601RSFollowerConfig
@@ -46,17 +63,29 @@ from lerobot_robot_seeed_b601 import SeeedB601RSFollower, SeeedB601RSFollowerCon
 logger = logging.getLogger(__name__)
 
 
+def _identity_directions() -> dict[str, float]:
+    """Every joint the upstream config knows about, mapped to 1.0.
+
+    Derived from the base class's own default rather than a hardcoded list, so
+    a joint added upstream arrives with 1.0 instead of being absent - and
+    absent means send_action multiplies it by 0.0 and commands it to its stop.
+    """
+    base = SeeedB601RSFollowerConfig.__dataclass_fields__["joint_directions"]
+    return {name: 1.0 for name in base.default_factory()}
+
+
 @RobotConfig.register_subclass("seeed_b601_rs_follower_fixed")
 @dataclass
 class ReBotFollowerConfig(SeeedB601RSFollowerConfig):
     """Registers a --robot.type that resolves to the FIXED follower.
 
-    Subclasses the upstream SeeedB601RSFollowerConfig and adds no fields: every
-    numeric default (joint_limits, joint_directions, mit_kp/kd, temperature
-    thresholds) is inherited unchanged. Without this registration, CLI entry
-    points (lerobot-record, lerobot-replay, ...) invoked with
+    Subclasses the upstream SeeedB601RSFollowerConfig. Every numeric default
+    (joint_limits, mit_kp/kd, temperature thresholds) is inherited unchanged;
+    joint_directions is the one exception and is pinned to the identity - see
+    the module docstring. Without this registration, CLI entry points
+    (lerobot-record, lerobot-replay, ...) invoked with
     --robot.type=seeed_b601_rs_follower construct the unfixed base class, and
-    the observation/action mismatch is back.
+    both the mirrored mapping and the observation/action mismatch are back.
 
     The registered name is deliberately still "seeed_b601_rs_follower_fixed",
     the string this config was validated under: renaming it silently breaks
@@ -77,14 +106,18 @@ class ReBotFollowerConfig(SeeedB601RSFollowerConfig):
     itself.
     """
 
+    joint_directions: dict[str, float] = field(
+        default_factory=_identity_directions)
+
 
 class ReBotFollower(SeeedB601RSFollower):
-    """Follower whose observations are in the same space as its actions.
+    """Follower that speaks motor space, and only motor space.
 
     Subclasses the upstream SeeedB601RSFollower (lerobot_robot_seeed_b601).
-    get_observation() is the only inherited method overridden; the rest are new
-    helpers. connect, calibrate, send_action, safe_zero and the temperature
-    protection are inherited as-is.
+    connect() is overridden to refuse a non-identity joint_directions before
+    the bus is opened; the rest are new helpers. calibrate, send_action,
+    get_observation, safe_zero and the temperature protection are inherited
+    as-is - with identity directions the inherited ones are already correct.
 
     DO NOT override `name`. Robot.calibration_fpath is derived from it, so a
     different name points at a directory with no calibration file, is_calibrated
@@ -94,45 +127,43 @@ class ReBotFollower(SeeedB601RSFollower):
     calibration as the robot it is fixing.
     """
 
-    def _direction(self, motor_name: str) -> float:
-        """Direction for a joint, guarding the 0.0 default.
+    def check_joint_directions(self) -> None:
+        """Refuse anything but the identity. See the module docstring.
 
-        The base class uses joint_directions.get(name, 0.0), so a joint missing
-        from that dict is silently multiplied by zero - i.e. commanded to zero
-        rather than left alone. All seven joints are present today; this guard
-        exists so the failure is loud rather than a surprise move if that ever
-        changes.
+        Two distinct failures, both of which move the arm rather than report
+        anything: a direction that is not 1.0 mirrors or rescales every command
+        on that joint, and a joint missing from the dict is multiplied by the
+        base class's 0.0 default and commanded to its zero - a hard stop on
+        shoulder_lift and elbow_flex.
         """
-        d = self.config.joint_directions.get(motor_name)
-        if d is None or d == 0.0:
+        directions = self.config.joint_directions
+        missing = [n for n in self.config.motor_can_ids if n not in directions]
+        if missing:
             raise ValueError(
-                f"joint_directions[{motor_name!r}] is {d!r}. The base class "
-                "would treat this as 0.0 and command the joint to zero."
-            )
-        return float(d)
+                f"joint_directions has no entry for {missing}. send_action "
+                "reads it with .get(name, 0.0), so those joints would be "
+                "multiplied by zero - i.e. commanded to their zero position, "
+                "which is a hard stop for shoulder_lift and elbow_flex.")
 
-    def motor_to_logical(self, motor_name: str, value: float) -> float:
-        """Motor-space degrees -> the space send_action expects."""
-        return value / self._direction(motor_name)
+        wrong = {n: d for n, d in directions.items() if d != 1.0}
+        if wrong:
+            raise ValueError(
+                f"joint_directions must be the identity here, got {wrong}. "
+                "This package drives the arm in motor space, which is the "
+                "URDF's space; a non-unit direction mirrors or rescales every "
+                "command on that joint. If an upgraded plugin restored the "
+                "vendor leader-arm mapping, re-read follower.py before running "
+                "anything.")
 
-    def logical_to_motor(self, motor_name: str, value: float) -> float:
-        """The space send_action expects -> motor-space degrees."""
-        return value * self._direction(motor_name)
+    def connect(self, calibrate: bool = True) -> None:
+        """Check the mapping, then connect as usual.
 
-    def get_observation(self):
-        """Base observation, with pos and vel converted into action space.
-
-        Position and velocity both carry the sign convention and both round-trip
-        through send_action, so both are converted. Torque is deliberately left
-        in motor space - see the module docstring.
+        Checked here because connect() is the one gate every entry point passes
+        through - the servers, the examples and the LeRobot CLI alike - and
+        because it runs before the bus is opened, so a bad config costs nothing.
         """
-        obs = super().get_observation()
-        for key in list(obs.keys()):
-            if key.endswith(".pos") or key.endswith(".vel"):
-                motor_name = key.rsplit(".", 1)[0]
-                if motor_name in self.config.joint_directions:
-                    obs[key] = self.motor_to_logical(motor_name, obs[key])
-        return obs
+        self.check_joint_directions()
+        super().connect(calibrate)
 
     def hold_action(self, observation=None):
         """Snapshot the current pose as an action that commands staying there.
@@ -149,9 +180,6 @@ class ReBotFollower(SeeedB601RSFollower):
 
         Wrong:
             while ...: robot.send_action(robot.hold_action())
-
-        With the base class this returns a mirrored pose on the three joints
-        with direction -1.0; here it is the pose the arm is actually in.
         """
         obs = observation if observation is not None else self.get_observation()
         return {k: v for k, v in obs.items() if k.endswith(".pos")}
@@ -191,27 +219,26 @@ class ReBotFollower(SeeedB601RSFollower):
 
 
 if __name__ == "__main__":
-    # Offline check of the transform, no hardware needed: assert that a pose
-    # survives logical -> motor -> logical, and show what the unfixed round-trip
-    # would have done to the same pose.
-    cfg = SeeedB601RSFollowerConfig(id="check", port="can0")
-    dirs = cfg.joint_directions
+    # Offline check, no hardware needed: what the vendor mapping would do to a
+    # pose, and that this package's config does nothing to it at all.
+    vendor = SeeedB601RSFollowerConfig(id="check", port="can0").joint_directions
+    ours = _identity_directions()
 
     pose = {"shoulder_pan": 10.0, "shoulder_lift": 20.0, "elbow_flex": 30.0,
             "wrist_flex": -15.0, "wrist_yaw": 5.0, "wrist_roll": 40.0,
             "gripper": 60.0}
 
-    print(f"{'joint':<15}{'dir':>6}{'motor':>10}{'fixed':>10}{'unfixed':>10}")
-    worst_unfixed = 0.0
+    print(f"{'joint':<15}{'vendor':>8}{'ours':>6}{'motor':>10}"
+          f"{'vendor cmd':>12}{'our cmd':>10}")
+    worst = 0.0
     for name, motor_deg in pose.items():
-        d = dirs[name]
-        fixed = (motor_deg / d) * d          # what this class round-trips to
-        unfixed = motor_deg * d              # what the base class commands
-        worst_unfixed = max(worst_unfixed, abs(unfixed - motor_deg))
-        flag = "" if abs(unfixed - motor_deg) < 1e-9 else "  <-- wrong"
-        print(f"{name:<15}{d:>6.1f}{motor_deg:>10.2f}{fixed:>10.2f}"
-              f"{unfixed:>10.2f}{flag}")
-        assert abs(fixed - motor_deg) < 1e-9, f"round-trip broken for {name}"
+        vendor_cmd = motor_deg * vendor[name]
+        our_cmd = motor_deg * ours[name]
+        worst = max(worst, abs(vendor_cmd - motor_deg))
+        flag = "" if abs(vendor_cmd - motor_deg) < 1e-9 else "  <-- mirrored"
+        print(f"{name:<15}{vendor[name]:>8.1f}{ours[name]:>6.1f}"
+              f"{motor_deg:>10.2f}{vendor_cmd:>12.2f}{our_cmd:>10.2f}{flag}")
+        assert abs(our_cmd - motor_deg) < 1e-9, f"not the identity for {name}"
 
-    print(f"\nfixed round-trip: exact for all {len(pose)} joints")
-    print(f"unfixed round-trip: worst error {worst_unfixed:.2f} deg")
+    print(f"\nours: exact for all {len(pose)} joints")
+    print(f"vendor mapping: worst error {worst:.2f} deg")

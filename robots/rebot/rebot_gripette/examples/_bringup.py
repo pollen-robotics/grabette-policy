@@ -199,24 +199,20 @@ def disconnect_follower(robot):
 # --------------------------------------------------------------------------- #
 # Motor-space helpers
 # --------------------------------------------------------------------------- #
-# The plugin's send_action/get_observation speak LOGICAL space (motor degrees
-# divided by joint_directions). Targets are computed in MOTOR space because
-# that is what is physically meaningful - positive elbow_flex is away from its
-# stop - and converted at the boundary. Mixing the two up is the whole bug
-# follower.py exists to fix, so the conversion is explicit every time rather
-# than assumed (13's note).
+# Everything here is in MOTOR degrees, which is also the URDF's space and the
+# space the follower reads and writes - ReBotFollowerConfig pins
+# joint_directions to the identity, so the vendor's leader-arm mapping is not
+# in play and nothing is converted anywhere. See follower.py.
 
 def motor_pose(robot):
     """Current pose in MOTOR degrees, arm joints only."""
     obs = robot.get_observation()
-    return {n: robot.logical_to_motor(n, obs[f"{n}.pos"])
-            for n, _, _ in ARM_MOTORS}
+    return {n: obs[f"{n}.pos"] for n, _, _ in ARM_MOTORS}
 
 
 def send_motor_pose(robot, targets_motor):
     """Command a MOTOR-space pose. The gripper motor is never included."""
-    robot.send_action({f"{n}.pos": robot.motor_to_logical(n, v)
-                       for n, v in targets_motor.items()})
+    robot.send_action({f"{n}.pos": v for n, v in targets_motor.items()})
 
 
 def read_param(robot, joint, param_id):
