@@ -177,9 +177,15 @@ def _build_clearance_gate(args, arm_iface):
 
 def main():
     args = parse_args()
+    # force=True because importing placo/mujoco configures the root logger
+    # first, which makes a plain basicConfig a silent no-op: INFO vanishes and
+    # warnings come out in the default format. That hid the line saying
+    # whether the clearance gate armed, which is the one line worth reading at
+    # startup.
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        force=True,
     )
     start_time = time.monotonic()
 

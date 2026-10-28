@@ -124,16 +124,39 @@ class ReBotArmInterface:
         not survive a disable/enable cycle or a power cycle;
         `store_parameters()` covers 0x2000 only. An arm enabled without this
         runs at the firmware default torque ceiling.
+
+        PER-MOTOR, OVER THE SIX ARM JOINTS. Not `bus.enable_all()` /
+        `bus.disable_all()`, which would also energize motor 7 - the reBot rack
+        gripper, which this package treats as read-only and never drives (see
+        ReBotFollower.send_action). Enabling it is not commanding it, but it is
+        still energizing a motor nothing is watching.
+
+        This used to call `bus.enable_torque(num_retry=2)` and
+        `bus.disable_torque(num_retry=2)`. Neither method exists on a
+        motorbridge Controller - the first attempt to use either raised
+        AttributeError, which on the shutdown path meant the server failed to
+        disable torque at all. Found by starting the server, not by a test;
+        the tests now cover both directions.
         """
         with self._lock:
+            names = self._robot.arm_motor_names()
             if enable:
-                self._robot.bus.enable_torque(num_retry=2)
+                for name in names:
+                    self._robot.motors[name].enable()
                 self._reapply_limits()
             else:
-                self._robot.bus.disable_torque(num_retry=2)
+                for name in names:
+                    self._robot.motors[name].disable()
 
     def _reapply_limits(self) -> None:
-        handles = getattr(self._robot.bus, "motors", None)
+        # `self._robot.motors`, NOT `self._robot.bus.motors`. The handles live
+        # on the follower; the bus is a motorbridge Controller and has no such
+        # attribute, so this looked up None every time, logged the warning
+        # below and skipped the re-application entirely - silently leaving the
+        # arm at the firmware default torque ceiling, which is the one thing
+        # the docstring above calls required. Same class of bug as the
+        # enable/disable names: a plausible attribute that does not exist.
+        handles = getattr(self._robot, "motors", None)
         if not handles:
             logger.warning(
                 "Could not reach the motor handles to re-apply torque limits; "

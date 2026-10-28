@@ -69,6 +69,13 @@ class FakeMotor:
         else:
             self.state = self._silenced or FakeState()
 
+    # --- torque path ---------------------------------------------------
+    def enable(self):
+        self.sent.append(("enable",))
+
+    def disable(self):
+        self.sent.append(("disable",))
+
     # --- command path --------------------------------------------------
     def send_mit(self, pos, vel, kp, kd, tau):
         self.sent.append(("mit", pos, vel, kp, kd, tau))
