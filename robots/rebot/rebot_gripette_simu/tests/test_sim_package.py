@@ -179,14 +179,40 @@ def test_the_cli_requires_a_home_pose():
     assert "check_home_pose" in src
 
 
-def test_the_scene_puts_the_table_where_this_arm_reaches():
-    """The reBot reaches in -x. A table copied from the OpenArm's scene would
-    be behind it, and its 0.40 m top would put this arm's gripper under the
-    surface at the home pose."""
+def test_the_arm_is_bolted_to_the_table_not_standing_beside_it():
+    """The reBot mounts ON the bench. The table is therefore built DOWNWARD
+    from z=0 with the arm's base left at the world origin - not the arm raised
+    onto a surface, which would offset Placo's FK, the Cartesian integrator
+    and every recorded pose by the table height."""
     from rebot_gripette_simu.server import DEFAULT_SCENE
 
     xml = DEFAULT_SCENE.read_text()
-    assert 'name="table"' in xml
-    assert 'pos="-0.35 0 0"' in xml, "the table must be at negative x"
+    assert 'name="tabletop"' in xml
+    # Top face at z=0: centre -0.015 with half-thickness 0.015.
+    assert 'size="0.40 0.35 0.015" pos="-0.30 0 -0.015"' in xml
+    assert 'pos="0 0 -0.73"' in xml, "the floor must be below the table"
     # offscreen buffer must cover the camera calibration resolution
     assert 'offwidth="1296"' in xml and 'offheight="972"' in xml
+
+
+def test_the_table_is_under_the_arms_reach():
+    """This arm reaches in -x, so a table copied from the OpenArm's scene
+    would be behind it."""
+    from rebot_gripette_simu.server import DEFAULT_SCENE
+
+    xml = DEFAULT_SCENE.read_text()
+    assert 'pos="-0.30 0 -0.015"' in xml, "the tabletop must be at negative x"
+
+
+def test_the_simulated_base_cannot_move():
+    """A free base makes FK quietly wrong. Checked here as well as in the
+    model package, because this is the scene that actually gets simulated."""
+    import mujoco
+
+    from rebot_gripette_simu.server import DEFAULT_SCENE
+    from gripette_sim.simulation import _load_model
+
+    model = _load_model(DEFAULT_SCENE)
+    base = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "axis_1")
+    assert model.body_dofnum[base] == 0, (
+        "the robot's root body has degrees of freedom - it is not bolted down")

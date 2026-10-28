@@ -141,3 +141,25 @@ def test_meshes_are_real_files_not_lfs_pointers():
 def test_scene_includes_the_robot():
     text = REBOT_B601RS_SCENE.read_text()
     assert 'include file="robot.xml"' in text
+
+
+def test_the_base_is_bolted_down():
+    """The raw Onshape export gives the root body a <freejoint>, which makes
+    the whole robot a FREE BODY: it rests on whatever is beneath it by
+    contact, visibly wobbles, and - the part that matters - its base can
+    translate and rotate.
+
+    Placo's FK, the ArmServicer's Cartesian integrator and every pose in a
+    recorded dataset are all expressed from a base at the world origin. A base
+    that drifts makes all of them quietly wrong rather than noisily broken.
+    The OpenArm export has no freejoint anywhere; postprocess_rebot.py strips
+    this one, and this test is what catches a re-export putting it back.
+    """
+    from rebot_gripette_model import REBOT_B601RS_XML
+
+    root = ET.parse(REBOT_B601RS_XML).getroot()
+    free = [b.get("name") for b in root.iter("body")
+            if b.find("freejoint") is not None]
+    assert not free, (
+        f"{free} still has a <freejoint> - the arm is not bolted down. "
+        f"Re-run postprocess_rebot.py --apply after the export.")

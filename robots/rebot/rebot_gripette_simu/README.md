@@ -40,12 +40,37 @@ picked for being inside the limits is still a guess, and `Reset` drives the arm
 into it. In sim a bad guess costs nothing — which is exactly why it must not
 become the value someone later copies onto the hardware.
 
-## The arm reaches in −x
+## The arm is bolted to the bench, and reaches in −x
 
-Unlike the OpenArm. At the home pose `0 15 25 -10 0 0` the control frame
-(`oak_l`) sits at x −165, y −3, z +371 mm, so the table is at negative x and
-the scene is **not** a mirror of `table_red_cube.xml`. See `scenes/table.xml`
-for the measured numbers it was placed from.
+Two things the first version of this scene got wrong.
+
+**Bolted, not standing on the floor.** The raw Onshape export gave the root
+body a `<freejoint>`, so the whole robot was a free body resting on the ground
+by contact — visibly wobbly, and worse, its base could translate. Placo's FK,
+the Cartesian integrator and every pose in a recorded dataset are expressed
+from a base at the world origin, so a drifting base makes all of them quietly
+wrong. `postprocess_rebot.py` now strips it (the script had already listed
+"the base weld" as not done yet), and both the model tests and this package's
+tests fail if a re-export puts it back. The OpenArm export has no freejoint
+anywhere, which is what a bolted arm should look like.
+
+**The table is built downward from z=0**, rather than the arm being raised
+onto a surface — same reason: the base stays at the origin, so nothing
+downstream is offset by the table height.
+
+| | |
+|---|---|
+| tabletop | z −0.030 … **0.000** (the arm bolts to its top face) |
+| legs | z −0.730 … −0.030 |
+| floor | z −0.730 |
+
+At the home pose `0 15 25 -10 0 0` the control frame (`oak_l`) sits at x −165,
+y −3, z +371 mm and `gripper_center` at x −224, z **+318 mm above the table
+surface** — a working height, with the cube under it. The work area is at
+negative x, so this is **not** a mirror of the OpenArm's `table_red_cube.xml`.
+
+The 318 mm is measured from the model. The table's **extent** (0.80 × 0.70 m,
+arm 10 cm in from one edge) is a guess — measure the real bench and change it.
 
 ## Known gap: no collision gate
 

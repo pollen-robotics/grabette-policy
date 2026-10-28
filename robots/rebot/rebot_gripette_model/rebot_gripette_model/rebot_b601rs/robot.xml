@@ -16,7 +16,6 @@
   <worldbody>
     
     <body name="axis_1" pos="0 0 0" quat="1 0 0 0" childclass="rebot_gripette">
-      <freejoint name="axis_1_freejoint" />
       <inertial pos="3.33785e-06 -0.000246108 0.0467214" mass="1.177400" fullinertia="0.000919630331 0.00090771726 0.00119532552 -8.82022178e-08 2.37162046e-08 -3.31039321e-06" />
       
       <geom type="mesh" class="visual" pos="-0 -0 0.067" quat="0 -0.707107 0.707107 0" mesh="rs06" material="rs06_material" />

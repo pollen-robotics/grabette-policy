@@ -161,6 +161,20 @@ while True:
     node = nxt[0]
     mchain.append(node)
 
+# ---- base weld: the root body must not be free ----
+_wb = mroot.find("worldbody")
+_free = []
+for body in _wb.findall("body"):
+    fj = body.find("freejoint")
+    if fj is not None:
+        _free.append((body, fj))
+if _free:
+    for body, _ in _free:
+        print(f"\nbase weld: {body.get('name')} has a <freejoint> - the robot "
+              f"is a free body and its base can move. Removing.")
+else:
+    print("\nbase weld: root body already fixed - nothing to change")
+
 print(f"\nMJCF chain ({len(mchain)}): "
       f"{' -> '.join(b.get('name') for b in mchain)}")
 print(f"{'body':<42}{'current':>10}{'old':>9}{'new':>10}  note")
@@ -202,14 +216,15 @@ for body in mroot.iter("body"):
 print(f"\ntotal {m_before:.4f} -> {m_after:.4f} kg (+{m_after - m_before:.4f})")
 
 if not m_changes:
-    print("MJCF: nothing to change - already patched")
+    print("MJCF: no mass change - already patched")
 
-if not (changes or m_changes):
+if not (changes or m_changes or _free):
     print("\nBoth files already patched. Nothing to do.")
     raise SystemExit(0)
 
 if not args.apply:
-    print(f"\nDRY RUN ({len(changes)} URDF + {len(m_changes)} MJCF change(s)). "
+    print(f"\nDRY RUN ({len(changes)} URDF + {len(m_changes) + len(_free)} "
+          f"MJCF change(s)). "
           "Re-run with --apply to write.")
     raise SystemExit(0)
 
@@ -231,7 +246,7 @@ if changes:
     tree.write(urdf, encoding="utf-8", xml_declaration=True)
     print(f"written {urdf}")
 
-if m_changes:
+if m_changes or _free:
     mbackup = mjcf_p.with_suffix(".xml.orig")
     if not mbackup.exists():
         shutil.copy2(mjcf_p, mbackup)
@@ -249,6 +264,9 @@ if m_changes:
             if v:
                 inert.set(attr, " ".join(f"{float(x) * ratio:.9g}"
                                          for x in v.split()))
+    for body, fj in _free:
+        body.remove(fj)
+        print(f"removed <freejoint> from {body.get('name')}")
     mtree.write(mjcf_p, encoding="utf-8", xml_declaration=True)
     print(f"written {mjcf_p}")
 
