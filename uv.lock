@@ -20,11 +20,13 @@ members = [
     "grabette-chunkrel",
     "grabette-dataset-tools",
     "gripette-core",
+    "gripette-sim",
     "openarm-gripette",
     "openarm-gripette-model",
     "openarm-gripette-simu",
     "rebot-gripette",
     "rebot-gripette-model",
+    "rebot-gripette-simu",
 ]
 constraints = [
     { name = "cmeel-tinyxml2", specifier = "==10.0.0" },
@@ -1408,6 +1410,33 @@ requires-dist = [
 provides-extras = ["kinematics", "dev", "test"]
 
 [[package]]
+name = "gripette-sim"
+version = "0.1.0"
+source = { editable = "libs/gripette-sim" }
+dependencies = [
+    { name = "gripette-core" },
+    { name = "mujoco" },
+    { name = "numpy" },
+    { name = "opencv-python-headless", version = "4.12.0.88", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "opencv-python-headless", version = "4.13.0.92", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "gripette-core", editable = "libs/gripette-core" },
+    { name = "mujoco", specifier = ">=3.0" },
+    { name = "numpy" },
+    { name = "opencv-python-headless" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
+]
+provides-extras = ["test"]
+
+[[package]]
 name = "grpcio"
 version = "1.81.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2613,6 +2642,7 @@ version = "0.1.0"
 source = { editable = "robots/openarm/openarm_gripette_simu" }
 dependencies = [
     { name = "gripette-core", extra = ["kinematics"] },
+    { name = "gripette-sim" },
     { name = "grpcio" },
     { name = "mujoco" },
     { name = "numpy" },
@@ -2647,6 +2677,7 @@ requires-dist = [
     { name = "grabette-chunkrel", marker = "extra == 'eval'", editable = "libs/grabette-chunkrel" },
     { name = "grabette-dataset-tools", marker = "extra == 'eval'", editable = "libs/grabette-dataset-tools" },
     { name = "gripette-core", extras = ["kinematics"], editable = "libs/gripette-core" },
+    { name = "gripette-sim", editable = "libs/gripette-sim" },
     { name = "grpcio", specifier = ">=1.81" },
     { name = "grpcio-tools", marker = "extra == 'dev'", specifier = ">=1.60" },
     { name = "httpx", marker = "extra == 'teleop'", specifier = ">=0.27" },
@@ -3632,6 +3663,36 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
 ]
 provides-extras = ["urdf", "test"]
+
+[[package]]
+name = "rebot-gripette-simu"
+version = "0.1.0"
+source = { editable = "robots/rebot/rebot_gripette_simu" }
+dependencies = [
+    { name = "gripette-core", extra = ["kinematics"] },
+    { name = "gripette-sim" },
+    { name = "grpcio" },
+    { name = "numpy" },
+    { name = "rebot-gripette" },
+    { name = "rebot-gripette-model" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "gripette-core", extras = ["kinematics"], editable = "libs/gripette-core" },
+    { name = "gripette-sim", editable = "libs/gripette-sim" },
+    { name = "grpcio", specifier = ">=1.81" },
+    { name = "numpy" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
+    { name = "rebot-gripette", editable = "robots/rebot/rebot_gripette" },
+    { name = "rebot-gripette-model", editable = "robots/rebot/rebot_gripette_model" },
+]
+provides-extras = ["test"]
 
 [[package]]
 name = "regex"

@@ -1,0 +1,74 @@
+<!--
+  reBot B601-RS + Gripette over a table, with a cube to reach for.
+
+  NOT a mirror of the OpenArm's table_red_cube.xml. This arm reaches in -x:
+  measured from the model at the home pose 0 15 25 -10 0 0,
+
+      oak_l (control frame)   x -165.2   y   -2.9   z +370.8 mm
+      gripper_center          x -224.4   y   -2.9   z +317.8 mm
+
+  so the table is at NEGATIVE x and the surface has to sit below 318 mm or the
+  home pose starts inside it. The OpenArm's table top is at z=0.40, which would
+  put this arm's gripper under the surface at home.
+
+  THE HEIGHT IS DERIVED FROM THE MODEL, NOT MEASURED FROM THE REAL RIG.
+  0.20 m leaves 118 mm of clearance under the gripper at the home pose, which
+  is enough for a small object and for the 10 cm square to be traced above it.
+  When the real table exists, measure it and change this number - a scene that
+  silently disagrees with the bench is how a policy learns the wrong heights.
+
+  offwidth/offheight must cover the camera's calibration resolution (1296x972)
+  or the fisheye render is cropped.
+-->
+<mujoco model="rebot_table">
+    <include file="../../rebot_gripette_model/rebot_gripette_model/rebot_b601rs/robot.xml" />
+
+    <visual>
+        <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0" />
+        <rgba haze="0.15 0.25 0.35 1" />
+        <global azimuth="160" elevation="-20" offwidth="1296" offheight="972" />
+    </visual>
+
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512"
+            height="3072" />
+        <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4"
+            rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300" />
+        <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5"
+            reflectance="0.2" />
+
+        <texture type="2d" name="wood" builtin="flat" rgb1="0.65 0.45 0.25" rgb2="0.55 0.35 0.18"
+            mark="random" markrgb="0.60 0.40 0.22" width="256" height="256" />
+        <material name="wood" texture="wood" texrepeat="3 3" shininess="0.1" specular="0.1" />
+
+        <material name="red_cube" rgba="0.85 0.15 0.1 1" shininess="0.3" specular="0.5" />
+    </asset>
+
+    <worldbody>
+        <light pos="0 0 3.5" dir="0 0 -1" directional="true" />
+        <geom name="floor" size="0 0 0.05" pos="0 0 0" type="plane" material="groundplane" />
+
+        <!-- Table: 60x60 cm surface, top at z=0.20, centred 35 cm out in -x.
+             Spans x -0.05..-0.65, so the home pose (gripper at x -0.224) is
+             over it with 118 mm of clearance. -->
+        <body name="table" pos="-0.35 0 0">
+            <geom name="tabletop" type="box" size="0.30 0.30 0.015" pos="0 0 0.185"
+                material="wood" mass="20" />
+            <geom name="leg_1" type="box" size="0.02 0.02 0.0925" pos="0.26 0.26 0.0925"
+                material="wood" mass="1" />
+            <geom name="leg_2" type="box" size="0.02 0.02 0.0925" pos="-0.26 0.26 0.0925"
+                material="wood" mass="1" />
+            <geom name="leg_3" type="box" size="0.02 0.02 0.0925" pos="0.26 -0.26 0.0925"
+                material="wood" mass="1" />
+            <geom name="leg_4" type="box" size="0.02 0.02 0.0925" pos="-0.26 -0.26 0.0925"
+                material="wood" mass="1" />
+        </body>
+
+        <!-- A 4 cm cube resting on the table, directly under the home pose. -->
+        <body name="cube" pos="-0.35 0 0.22">
+            <freejoint name="cube_free" />
+            <geom name="cube" type="box" size="0.02 0.02 0.02" material="red_cube"
+                mass="0.05" friction="1.0 0.01 0.001" />
+        </body>
+    </worldbody>
+</mujoco>

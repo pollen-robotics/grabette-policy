@@ -16,6 +16,10 @@ dependencies = [
     # proto contract. placo and protobuf are no longer listed directly — the
     # only importer of either moved into gripette-core.
     "gripette-core[kinematics]",
+    # The camera, the gripper service and the MuJoCo wrapper moved here: they
+    # are the same for any arm wearing this gripper, and gripette-core cannot
+    # hold them (it refuses mujoco/opencv for the hardware drivers' sake).
+    "gripette-sim",
 ]
 
 [project.optional-dependencies]
@@ -57,6 +61,7 @@ build-backend = "hatchling.build"
 # not PyPI. Was a local `../` path dep in the standalone repo.
 openarm-gripette-model = { workspace = true }
 gripette-core = { workspace = true }
+gripette-sim = { workspace = true }
 grabette-chunkrel = { workspace = true }
 grabette-dataset-tools = { workspace = true }
 
