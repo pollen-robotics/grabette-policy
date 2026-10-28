@@ -248,6 +248,27 @@ releases, and then raises unless the motor is near a home position that is
 meaningless for this arm — and `connect()` calls it, so a gripper nobody asked
 about can abort the whole bring-up. It measured −235.29° and did exactly that.
 
+## The server, as run
+
+`grpc_server_real.py` was started against the arm on 2026-10-28 and came up
+clean: kinematics loaded, `Bench clearance gate armed: 20 mm from the bench,
+guarding 6 links`, ArmService on 50052, and Ctrl-C ran the controlled descent
+and disconnected without a traceback. It comes up **limp** - torque is not
+enabled until a client calls `SetTorque`.
+
+That first start found three defects nothing else could have, all the same
+shape - a plausible name that does not exist, on a path no test exercised:
+
+| | |
+|---|---|
+| `set_torque` | called `bus.enable_torque()` / `bus.disable_torque()`; neither exists on a motorbridge `Controller`, so **both directions** raised `AttributeError`. The server could never arm the arm, and on shutdown failed to disable torque at all. |
+| `_reapply_limits` | looked for the handles on `bus.motors`; they live on `robot.motors`. It found `None` every time and skipped the re-application — leaving the arm at the **firmware default torque ceiling**. |
+| logging | `basicConfig` was a silent no-op because `placo` configures the root logger at import, so every INFO line vanished — including the one saying whether the gate armed, which is how the first two stayed hidden. |
+
+The lesson is cheap to state and was expensive to learn: a driver's torque path
+cannot be validated against a fake that accepts any spelling. `test_set_torque.py`
+now pins the method names against the real `motorbridge.Motor`.
+
 ## Bring-up order
 
 Never skip a rung, and never run any of it without a human in the loop and a
