@@ -26,11 +26,14 @@ SAFETY, READ BEFORE RUNNING
                    are cut while the arm is wherever the policy left it. That
                    is a free fall.
 
-    shutdown() therefore damps the arm to a stop before disabling: zero
-    stiffness, non-zero damping, so it sinks rather than drops. The arm still
-    ends low - damping bounds the descent, it does not hold against gravity -
-    but it arrives instead of falling. Park the arm deliberately if you want it
-    somewhere specific; do not get there by killing the server.
+    shutdown() therefore PUTS THE ARM DOWN before disabling: shoulder_lift and
+    elbow_flex are lowered to their stops under position control, the other
+    four joints held where they are, so the disable lands on an arm already
+    resting. This was a damped release (MIT kp=0) until 2026-10-28, when the
+    damping was measured on the arm and found indistinguishable from cutting
+    torque - see ReBotFollower.controlled_descent for the arithmetic. Park the
+    arm deliberately if you want it somewhere specific; do not get there by
+    killing the server.
 
     THE HOME POSE HAS NO DEFAULT, on purpose. Two different things get
     called "home":
