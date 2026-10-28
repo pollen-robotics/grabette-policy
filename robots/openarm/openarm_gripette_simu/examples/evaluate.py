@@ -516,10 +516,12 @@ def parse_args():
                         "(set_arm_torque.py — the server resyncs its integrator on "
                         "torque-on), then run with this flag: the episode starts from "
                         "wherever the arm is.")
-    p.add_argument("--home_joints", type=float, nargs=7, default=None,
-                   metavar=("J1", "J2", "J3", "J4", "J5", "J6", "J7"),
+    p.add_argument("--home_joints", type=float, nargs="+", default=None,
+                   metavar="RAD",
                    help="Episode start joint configuration (rad), passed to the arm "
-                        "server's Reset. CRITICAL for camera-local-delta policies: the "
+                        "server's Reset - one value per joint, and the count is "
+                        "checked against what the arm reports (7 on the OpenArm, "
+                        "6 on the reBot). CRITICAL for camera-local-delta policies: the "
                         "deltas are relative, so the start pose ANCHORS the whole "
                         "trajectory — the start CAMERA VIEW must match the demos' "
                         "first frames (position AND pitch). Find it by jogging the arm "
@@ -1015,6 +1017,75 @@ def detect_grasp_projection(checkpoint):
                 f"{[round(v, 4) for v in last_two]} -> "
                 f"{'PROJECTED (strategy, closure)' if projected else 'RAW angles'}")
     return projected
+
+
+def resolve_action_space(action_dim, arm_dof, chunk_relative, checkpoint):
+    """What do this checkpoint's action numbers MEAN? Returns `joint_mode`.
+
+    The checkpoint does not say, so the width is the evidence - and the width
+    alone is not always enough:
+
+        11D                 Cartesian per-step deltas [dp(3), dr6d(6), grip(2)]
+        arm_dof + 2         joint space               [arm_q(dof), prox, dist]
+        8D                  chunk-relative            [pos(3), rotvec(3), grip(2)]
+
+    Joint-space width follows the ARM: 9 on a 7-DoF OpenArm, 8 on a 6-DoF
+    reBot. Chunk-relative is Cartesian and so is 8D on any arm. On a 6-DoF arm
+    those collide, and the two readings are not close: six joint angles read as
+    chunk-relative become three metres of translation and a rotation vector,
+    and the arm is commanded somewhere arbitrary rather than erroring.
+
+    So where 8D is ambiguous this asks the CHECKPOINT - its preprocessor
+    records whether a chunk-relative step is registered, which is evidence
+    rather than a guess - and where that cannot answer, it refuses. Guessing
+    wrong here moves a real arm.
+    """
+    joint_width = arm_dof + 2
+
+    if action_dim == 11:
+        return False
+    if action_dim == joint_width and action_dim != 8:
+        return True                     # unambiguous joint space (7-DoF arms)
+
+    if action_dim == 8:
+        ambiguous = (joint_width == 8)  # a 6-DoF arm: joint space is also 8D
+        if not ambiguous:
+            if chunk_relative is None:
+                raise SystemExit(
+                    "This checkpoint emits 8D actions, which is the "
+                    "chunk-relative width, but chunk-relative handling is off. "
+                    "Running it as per-step deltas would read the rotation's "
+                    "last dim as a gripper command. Pass --chunk_relative on.")
+            return False
+
+        # 6-DoF arm: 8D is either joint space or chunk-relative.
+        if chunk_relative is not None:
+            logger.info("8D on a %d-DoF arm is ambiguous; --chunk_relative "
+                        "settles it as chunk-relative.", arm_dof)
+            return False
+        detected = detect_chunk_relative(checkpoint)
+        if detected is True:
+            logger.info("8D on a %d-DoF arm is ambiguous; the checkpoint's "
+                        "preprocessor settles it as chunk-relative.", arm_dof)
+            return False
+        if detected is False:
+            logger.info("8D on a %d-DoF arm is ambiguous; the checkpoint's "
+                        "preprocessor registers no chunk-relative step, so "
+                        "these are joint-space actions.", arm_dof)
+            return True
+        raise SystemExit(
+            f"This checkpoint emits 8D actions and the arm has {arm_dof} "
+            f"joints, so 8D could be EITHER joint space [arm_q({arm_dof}), "
+            f"prox, dist] OR chunk-relative [pos(3), rotvec(3), grip(2)]. The "
+            f"checkpoint's preprocessor config could not settle it (no local "
+            f"checkpoint, or it could not be read). Pass --chunk_relative "
+            f"on|off explicitly - reading one as the other commands the arm to "
+            f"an arbitrary pose rather than failing.")
+
+    raise SystemExit(
+        f"This eval understands 11D Cartesian deltas, {joint_width}D joint "
+        f"space for this {arm_dof}-joint arm, or 8D chunk-relative actions. "
+        f"This checkpoint emits {action_dim}D.")
 
 
 def detect_chunk_relative(checkpoint):
@@ -2088,10 +2159,10 @@ def main():
                         "chunk-relative step(s) from the postprocessor "
                         "(eval consumes the offsets directly)")
 
-        # Auto-detect state/action mode from the policy's feature shapes.
+        # Widths now; what they MEAN once the arm's joint count is known,
+        # which takes the server - see resolve_action_space.
         state_dim = policy.config.robot_state_feature.shape[0]
         action_dim = policy.config.action_feature.shape[0]
-        joint_mode = action_dim == 9  # 9D = [arm_q(7), prox, dist]; 11D = Cartesian deltas
         # Cross-check the representation against the checkpoint's own width, so a
         # wrong --chunk_relative fails at load rather than on the arm.
         if chunk_relative is not None and action_dim != 8:
@@ -2100,19 +2171,6 @@ def main():
                 f"but this checkpoint emits {action_dim}D. Either the flag is "
                 "wrong or the checkpoint is not chunk-relative."
             )
-        if chunk_relative is None and action_dim == 8:
-            raise SystemExit(
-                "This checkpoint emits 8D actions, which is the chunk-relative "
-                "width, but chunk-relative handling is off. Running it as "
-                "per-step deltas would read the rotation's last dim as a gripper "
-                "command. Pass --chunk_relative on."
-            )
-        use_relative_proprio = (state_dim > 2) and not joint_mode
-        logger.info(
-            f"Policy: action_space={'joint' if joint_mode else 'cartesian'}, "
-            f"state_dim={state_dim}, action_dim={action_dim}, "
-            f"n_action_steps={policy.config.n_action_steps}"
-        )
 
     # ---- Connect to simulator ----
     from openarm_gripette_simu.proto import arm_pb2, arm_pb2_grpc, gripper_pb2, gripper_pb2_grpc
@@ -2125,6 +2183,30 @@ def main():
     arm_stub.Ping(arm_pb2.ArmPingRequest())
     gripper_stub.Ping(gripper_pb2.PingRequest())
     logger.info("Connected to simulator")
+
+    # How many joints does the arm on the other end actually have? Asked of the
+    # SERVER rather than taken from a flag or an arm registry: it cannot then
+    # disagree with the thing being driven, and the failure mode of a flag that
+    # disagreed would be a wrong-width command, not an error. 7 on the OpenArm,
+    # 6 on the reBot.
+    arm_dof = len(arm_stub.GetArmState(arm_pb2.GetArmStateRequest()).joint_positions)
+    logger.info(f"Arm reports {arm_dof} joints")
+
+    if args.home_joints is not None and len(args.home_joints) != arm_dof:
+        raise SystemExit(
+            f"--home_joints has {len(args.home_joints)} values but the arm has "
+            f"{arm_dof} joints. Reset would be handed a pose of the wrong "
+            f"width.")
+
+    if not args.policy_addr:
+        joint_mode = resolve_action_space(action_dim, arm_dof, chunk_relative,
+                                          args.checkpoint)
+        use_relative_proprio = (state_dim > 2) and not joint_mode
+        logger.info(
+            f"Policy: action_space={'joint' if joint_mode else 'cartesian'}, "
+            f"state_dim={state_dim}, action_dim={action_dim}, "
+            f"n_action_steps={policy.config.n_action_steps}"
+        )
 
     # Persistent camera stream: opened ONCE for the whole run. Opening a fresh
     # gRPC stream per observation blocked ~200 ms/step (measured), silently
