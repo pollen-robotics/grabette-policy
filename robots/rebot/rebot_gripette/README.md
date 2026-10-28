@@ -80,6 +80,19 @@ The Gripette is level exactly when `shoulder_lift + elbow_flex + wrist_flex =
 
 Both failures are at the same corner and both are branch flips rather than
 solver errors — the signature of 6 DoF with no null space to escape through.
+
+**Rung 4 ran on the arm on 2026-10-28** — the 2 cm square in the x plane, from
+this pose, clean. The first attempt traced it as 41 separate legs and was
+unreadable by eye: `leg_duration` floors a leg at `MIN_LEG_S = 2.0`, the
+segments are 0.5–1.3°, so the arm stopped 41 times and took 80 s to cover 36°
+of joint travel. `_bringup.run_path` traces the whole waypoint list as one
+motion; at `--deg_per_s 6` the square takes about 7 s and looks like a square.
+
+A search over 4 500 poses found **2 143** that trace 10 cm cleanly in all three
+planes, the nearest being `0 35 25 -10 0 0` — the home pose with `shoulder_lift`
+raised 20°, control frame 234 mm out instead of 165. Worth knowing, but every
+candidate sits at 11–14° worst joint step against the 15° limit, where the x
+plane from home manages 6.3°. Passing is not the same as having margin.
 The gripper sits 165 mm from the base, close to the shoulder axis, where
 lateral motion conditions worst.
 
