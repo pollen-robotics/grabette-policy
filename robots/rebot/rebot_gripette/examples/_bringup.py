@@ -296,6 +296,96 @@ def run_leg(robot, start_motor, end_motor, duration_s, label,
     return True
 
 
+def path_segments(waypoints_motor):
+    """[(from, to, largest joint delta)] for consecutive waypoints.
+
+    Distance along a traced path is measured as the largest joint delta per
+    segment - the same currency leg_duration prices a single leg in - so
+    deg_per_s means the same thing whether a motion is one leg or forty.
+    """
+    return [(a, b, max(abs(b[n] - a[n]) for n in b))
+            for a, b in zip(waypoints_motor, waypoints_motor[1:])]
+
+
+def pose_along(segs, d, last):
+    """Interpolate a segment list at distance `d` from its start.
+
+    A zero-length segment is SKIPPED, not landed on. Returning from it would
+    swallow the rest of the distance and freeze the path at that waypoint -
+    and a square whose last waypoint returns to its first produces exactly
+    such a segment.
+    """
+    for a, b, seg in segs:
+        if seg <= 1e-9:
+            continue
+        if d <= seg:
+            return {n: a[n] + (b[n] - a[n]) * (d / seg) for n in b}
+        d -= seg
+    return dict(last)
+
+
+def run_path(robot, waypoints_motor, deg_per_s=DEG_PER_S, label="path",
+             abort_deg=ABORT_DEG, sample_s=1.0, ease_s=1.0):
+    """Walk a whole waypoint list as ONE continuous motion. True if completed.
+
+    run_leg per waypoint is the wrong tool for a traced path. Its cosine ease
+    goes to zero velocity at each end, and MIN_LEG_S floors every leg at 2 s
+    however small it is - so a 41-waypoint square whose segments are 0.5-1.3
+    deg took 82 s and stopped 41 times. That is not a slow trace, it is a
+    stutter, and it is the one thing that makes a square hard to judge by eye.
+
+    Here the waypoints are strung onto a single timeline. Distance along it is
+    measured in the same currency leg_duration uses - the largest joint delta
+    of each segment - so `deg_per_s` keeps meaning what it means everywhere
+    else. The ease is applied ONCE at each end of the whole path, over `ease_s`,
+    so the arm accelerates in, traces at a constant rate, and settles out.
+
+    The abort envelope is unchanged and checked against the interpolated
+    target, exactly as run_leg does.
+    """
+    segs = path_segments(waypoints_motor)
+    total = sum(d for _, _, d in segs)
+    if total <= 1e-9:
+        return True
+
+    # Ease in and out over a fixed TIME at each end, with a constant-rate
+    # middle: a cosine over the whole path would make the middle faster than
+    # deg_per_s to compensate for the slow ends.
+    cruise_s = total / deg_per_s
+    duration = cruise_s + ease_s          # the two half-eases cost ease_s
+    print(f"  {label}: {len(waypoints_motor)} waypoints, {total:.1f} deg of "
+          f"joint travel at {deg_per_s:g} deg/s -> {duration:.1f} s")
+
+    def distance_at(t):
+        """Distance along the path at time t, with eased ends."""
+        if t <= ease_s:
+            return deg_per_s * ease_s * ease(t / ease_s) / 2.0
+        if t >= duration - ease_s:
+            r = (duration - t) / ease_s
+            return total - deg_per_s * ease_s * ease(r) / 2.0
+        return deg_per_s * (t - ease_s / 2.0)
+
+    t0, next_sample = time.time(), 0.0
+    while (t := time.time() - t0) < duration:
+        targets = pose_along(segs, min(distance_at(t), total),
+                             waypoints_motor[-1])
+        send_motor_pose(robot, targets)
+
+        if t >= next_sample:
+            now = motor_pose(robot)
+            reason = _envelope_violation(robot, targets, now, abort_deg)
+            shown = "  ".join(f"{n}={now[n]:+7.2f}" for n, _, _ in ARM_MOTORS)
+            print(f"  {label} t={t:6.2f}  {shown}")
+            if reason:
+                print(f"  !! ABORT: {reason}")
+                return False
+            next_sample += sample_s
+        time.sleep(1.0 / RATE_HZ)
+
+    send_motor_pose(robot, dict(waypoints_motor[-1]))
+    return True
+
+
 def hold(robot, targets_motor, duration_s, label="hold", abort_deg=ABORT_DEG):
     """Hold one fixed target. The target is NOT re-read from the arm.
 

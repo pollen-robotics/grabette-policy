@@ -57,7 +57,8 @@ import numpy as np
 
 from _bringup import (ARM_MOTORS, MOTORS, cold_read_positions, connect_follower,
                       disconnect_follower, hold, leg_duration, motor_pose,
-                      print_pose, require_full_read, run_leg, urdf_limits)
+                      print_pose, require_full_read, run_leg, run_path,
+                      urdf_limits)
 
 AXES = {"x": 0, "y": 1, "z": 2}
 
@@ -125,7 +126,14 @@ def main():
     ap.add_argument("--steps_per_side", type=int, default=10)
     ap.add_argument("--max_joint_step_deg", type=float, default=15.0,
                     help="matches the server's IK-jump watchdog")
-    ap.add_argument("--deg_per_s", type=float, default=2.0)
+    ap.add_argument("--deg_per_s", type=float, default=2.0,
+                    help="rate for the ramps AND for the trace. The square is "
+                         "traced as one continuous motion, so this is the "
+                         "speed the arm actually moves at - raising it does "
+                         "not multiply any per-waypoint floor.")
+    ap.add_argument("--sample_s", type=float, default=1.0,
+                    help="seconds between printed progress lines during the "
+                         "trace")
     ap.add_argument("--dry_run", action="store_true",
                     help="solve offline and report; touches no hardware")
     ap.add_argument("--from_joints", type=float, nargs=6, metavar="DEG",
@@ -244,25 +252,31 @@ def main():
                 current = home
 
         if ok:
-            print(f"\n[square] tracing {len(poses)} waypoints")
-            for i, q in enumerate(poses):
-                target = dict(zip(ARM_JOINT_NAMES, np.rad2deg(q)))
-                delta = max(abs(target[n] - current[n]) for n, _, _ in ARM_MOTORS)
-                seg_s = leg_duration(delta, args.deg_per_s)
-                ok = run_leg(robot, current, target, seg_s, f"wp{i:02d}",
-                             sample_s=max(seg_s, 0.5))
-                if not ok:
-                    break
-                current = target
+            # MEASURED, not commanded. Comparing the end against the commanded
+            # start pose reports steady-state droop (2.5 deg on this arm) and
+            # calls it closure error. Closure is whether the arm came back to
+            # where it actually was, so both ends have to be measurements.
+            before = motor_pose(robot)
+            print(f"\n[square] tracing {len(poses)} waypoints as one motion")
+            waypoints = [current] + [dict(zip(ARM_JOINT_NAMES, np.rad2deg(q)))
+                                     for q in poses]
+            ok = run_path(robot, waypoints, args.deg_per_s, "square",
+                          sample_s=args.sample_s)
+            current = waypoints[-1]
 
-        if ok:
-            end = motor_pose(robot)
-            print("\nclosure error vs the pose the square started from "
-                  "(motor deg):")
-            for name, _, _ in ARM_MOTORS:
-                print(f"  {name:<15}{end[name] - start_motor[name]:+8.3f}")
-            print("\nIf the square was not visually clean, STOP here. "
-                  "A policy on an arm that cannot trace a square fails silently.")
+            if ok:
+                end = motor_pose(robot)
+                print("\nclosure error - measured end vs measured start "
+                      "(motor deg):")
+                worst = max(abs(end[n] - before[n]) for n, _, _ in ARM_MOTORS)
+                for name, _, _ in ARM_MOTORS:
+                    print(f"  {name:<15}{end[name] - before[name]:+8.3f}")
+                print(f"\nworst closure {worst:.3f} deg. This is the round trip "
+                      f"of the whole IK loop on real hardware; droop cancels "
+                      f"out of it because both ends are measurements.")
+                print("\nIf the square was not visually clean, STOP here. "
+                      "A policy on an arm that cannot trace a square fails "
+                      "silently.")
 
         # Back to where the arm was found, whatever happened to the square.
         # An abort leaves it part-way round, and the teardown's descent only

@@ -338,6 +338,70 @@ def test_a_joint_that_falls_reads_as_overspeed():
     assert d["overspeed"] == pytest.approx(12.0)
 
 
+def test_a_traced_path_is_not_a_sum_of_minimum_length_legs():
+    """Why run_path exists. leg_duration floors every leg at MIN_LEG_S, so the
+    square's 41 segments of 0.5-1.3 deg each took 2 s regardless - 82 s of
+    stop-start for 36 deg of travel. Priced as one continuous motion the same
+    path is an order of magnitude shorter."""
+    seg_deltas = [1.3] * 20 + [0.5] * 20
+    per_leg = sum(_bringup.leg_duration(d, deg_per_s=2.0) for d in seg_deltas)
+    as_one_path = sum(seg_deltas) / 2.0
+    assert per_leg == pytest.approx(80.0)     # 40 segments pinned at MIN_LEG_S
+    assert as_one_path == pytest.approx(18.0)
+    assert per_leg > 4 * as_one_path
+
+
+def test_the_path_distance_metric_matches_leg_duration():
+    """run_path measures distance in the same currency leg_duration prices a
+    single leg in - the largest joint delta - so --deg_per_s means one thing
+    across the package rather than two."""
+    segs = _bringup.path_segments([{"a": 0.0, "b": 0.0},
+                                   {"a": 3.0, "b": 1.0},
+                                   {"a": 3.0, "b": 5.0}])
+    assert [s[2] for s in segs] == [3.0, 4.0]
+    # One leg of 3 deg and one of 4 deg, priced the same way.
+    assert _bringup.leg_duration(3.0, deg_per_s=1.0) == pytest.approx(3.0)
+
+
+def test_a_path_interpolates_across_waypoint_boundaries():
+    """The point of tracing as one motion: distance past a waypoint continues
+    into the next segment instead of stopping there."""
+    wps = [{"a": 0.0}, {"a": 10.0}, {"a": 20.0}]
+    segs = _bringup.path_segments(wps)
+    assert _bringup.pose_along(segs, 0.0, wps[-1])["a"] == pytest.approx(0.0)
+    assert _bringup.pose_along(segs, 5.0, wps[-1])["a"] == pytest.approx(5.0)
+    # 15 is past the first waypoint - it must land mid-second-segment.
+    assert _bringup.pose_along(segs, 15.0, wps[-1])["a"] == pytest.approx(15.0)
+    assert _bringup.pose_along(segs, 20.0, wps[-1])["a"] == pytest.approx(20.0)
+
+
+def test_a_path_never_runs_past_its_last_waypoint():
+    """Distance beyond the end clamps to the final pose rather than
+    extrapolating off it."""
+    wps = [{"a": 0.0}, {"a": 10.0}]
+    segs = _bringup.path_segments(wps)
+    assert _bringup.pose_along(segs, 999.0, wps[-1])["a"] == pytest.approx(10.0)
+
+
+def test_a_repeated_waypoint_does_not_divide_by_zero():
+    """Two identical consecutive waypoints are a zero-length segment. A square
+    whose last waypoint returns to the first produces them."""
+    wps = [{"a": 0.0}, {"a": 0.0}, {"a": 4.0}]
+    segs = _bringup.path_segments(wps)
+    assert [s[2] for s in segs] == [0.0, 4.0]
+    assert _bringup.pose_along(segs, 0.0, wps[-1])["a"] == pytest.approx(0.0)
+    assert _bringup.pose_along(segs, 2.0, wps[-1])["a"] == pytest.approx(2.0)
+
+
+def test_the_square_closure_compares_two_measurements():
+    """Closure against the COMMANDED start pose reports steady-state droop -
+    2.5 deg on this arm - and calls it closure error. Both ends must be
+    measured for droop to cancel."""
+    src = (EXAMPLES / "cartesian_square.py").read_text()
+    assert "end[name] - before[name]" in src
+    assert "end[name] - start_motor[name]" not in src
+
+
 def test_the_square_solved_from_the_stops_hugs_a_limit():
     """Why cartesian_square.py grew --home_joints. The solver reports IK
     residual and joint step; neither says anything about how close the path
