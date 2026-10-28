@@ -167,7 +167,9 @@ control already applies it.
 
 Rung 2.6, `verify_descent.py`, scores a descent against its commanded ramp: did
 the lowered joints reach the floor, did the held joints hold, did anything run
-faster than the commanded rate. **Not yet run on hardware.**
+faster than the commanded rate. Run from the 15/25 home on 2026-10-28: the arm
+was put down as commanded. That is the first teardown on this arm that carried
+its weight all the way to the stops rather than letting go of it.
 
 ## Motor 7 is read-only
 
