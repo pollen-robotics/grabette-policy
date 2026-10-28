@@ -286,7 +286,7 @@ class ReBotFollower(SeeedB601RSFollower):
                 if n != FOLLOWER_GRIPPER_MOTOR]
 
     def damped_release(self, kd=None, max_s=RELEASE_MAX_S,
-                       still_deg_s=RELEASE_STILL_DEG_S) -> bool:
+                       still_deg_s=RELEASE_STILL_DEG_S, on_sample=None) -> bool:
         """Stop driving the arm WITHOUT dropping it. True once it settled.
 
         MIT with zero stiffness and non-zero damping: torque proportional to
@@ -307,6 +307,13 @@ class ReBotFollower(SeeedB601RSFollower):
         The idiom is upstream's own: detect_gripper_zero releases the gripper
         with send_mit(0, 0, 0, 1.5, 0). The per-joint kd values are ours and
         are unmeasured - see RELEASE_KD.
+
+        `on_sample(t, states)` is called once per tick with the elapsed seconds
+        and {joint: MotorState}, for examples/measure_release.py to record the
+        descent. It exists so the kd measurement runs against THIS loop rather
+        than a copy of it; a copy could be calibrated and the shipped one still
+        be wrong. Exceptions from it are not caught - a broken recorder must
+        not silently leave the arm undamped.
         """
         kd = kd or RELEASE_KD
         names = self.arm_motor_names()
@@ -317,9 +324,12 @@ class ReBotFollower(SeeedB601RSFollower):
             for name in names:
                 self.motors[name].send_mit(0.0, 0.0, 0.0, kd[name], 0.0)
 
+            states = {n: self.motors[n].get_state() for n in names}
+            if on_sample is not None:
+                on_sample(t, states)
+
             speeds = [abs(math.degrees(s.vel))
-                      for s in (self.motors[n].get_state() for n in names)
-                      if s is not None]
+                      for s in states.values() if s is not None]
             worst = max(speeds) if speeds else float("inf")
 
             if worst < still_deg_s:

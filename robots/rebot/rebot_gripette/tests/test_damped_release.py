@@ -62,3 +62,55 @@ def test_a_silent_motor_does_not_read_as_still(follower):
     for name in follower.arm_motor_names():
         follower.motors[name].set_silent()
     assert follower.damped_release(max_s=0.6) is False
+
+
+# --------------------------------------------------------------------------- #
+# on_sample: the hook examples/measure_release.py records the descent through
+# --------------------------------------------------------------------------- #
+
+def test_on_sample_sees_every_arm_joint_and_no_gripper(follower):
+    """The recorder measures the shipped loop, so it must be handed the same
+    joints that loop drives - all six, and motor 7 never."""
+    seen = []
+    follower.damped_release(max_s=0.5, on_sample=lambda t, s: seen.append((t, s)))
+    assert seen, "on_sample was never called"
+    for _, states in seen:
+        assert set(states) == set(follower.arm_motor_names())
+        assert "gripper" not in states
+
+
+def test_on_sample_timestamps_advance(follower):
+    """t is elapsed seconds from the start of the release; a recorder that got
+    a constant would produce a flat descent curve and a wrong kd."""
+    seen = []
+    follower.motors["elbow_flex"].state.vel = math.radians(30.0)
+    follower.damped_release(max_s=0.6, on_sample=lambda t, s: seen.append(t))
+    assert len(seen) > 1
+    assert all(b >= a for a, b in zip(seen, seen[1:]))
+    assert seen[-1] > seen[0]
+
+
+def test_on_sample_is_told_about_a_silent_motor(follower):
+    """None has to reach the recorder rather than being filtered out, or a
+    joint that went quiet mid-descent silently leaves the record."""
+    seen = []
+    follower.motors["wrist_roll"].set_silent()
+    follower.damped_release(max_s=0.5, on_sample=lambda t, s: seen.append(s))
+    assert seen
+    assert all(s["wrist_roll"] is None for s in seen)
+
+
+def test_a_broken_recorder_does_not_pass_as_a_release(follower):
+    """Swallowing the exception would leave the caller believing the arm was
+    damped while the loop had stopped commanding damping."""
+    def boom(t, states):
+        raise RuntimeError("recorder blew up")
+
+    with pytest.raises(RuntimeError):
+        follower.damped_release(max_s=0.5, on_sample=boom)
+
+
+def test_release_without_a_recorder_is_unchanged(follower):
+    """on_sample defaults off: the server and the teardown call this without
+    one and must keep behaving exactly as before."""
+    assert follower.damped_release(max_s=5.0) is True

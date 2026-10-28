@@ -28,7 +28,8 @@ import _bringup  # noqa: E402
 
 @pytest.mark.parametrize("name", ["read_arm_state", "reset_arm", "set_arm_pose",
                                   "cartesian_square", "read_torque_limits",
-                                  "mirror_arm", "capture_pose", "check_connect"])
+                                  "mirror_arm", "capture_pose", "check_connect",
+                                  "measure_release"])
 def test_example_imports_without_a_bus(name):
     """A module that opens CAN at import is a trap: an IDE 'run file', a doc
     tool or a stray import would touch the arm. limits.py already had its
@@ -283,6 +284,79 @@ def test_the_spread_is_peak_to_peak_per_joint():
     stats = capture.summarise(samples)
     assert stats["a"] == (pytest.approx(2.0), pytest.approx(2.0), 3)
     assert stats["b"] == (pytest.approx(10.0), pytest.approx(1.0), 3)
+
+
+# --------------------------------------------------------------------------- #
+# Measuring the release damping
+# --------------------------------------------------------------------------- #
+
+class _FakeState:
+    """Just the MotorState fields descent_summary reads."""
+
+    def __init__(self, pos_deg, vel_deg_s, torq):
+        self.pos = math.radians(pos_deg)
+        self.vel = math.radians(vel_deg_s)
+        self.torq = torq
+
+
+def _sink(kd, w_deg_s, from_deg=25.0, n=20):
+    """A joint sinking at terminal velocity: tau = kd*w throughout."""
+    tau = kd * math.radians(w_deg_s)
+    travel = w_deg_s * (n - 1) / 50.0
+    return [(i / 50.0,
+             _FakeState(from_deg - travel * i / (n - 1), -w_deg_s, -tau))
+            for i in range(n)]
+
+
+def test_the_two_kd_estimates_agree_at_terminal_velocity():
+    """They come from different measurements - commanded damping x observed
+    speed, and observed torque. Agreement is the evidence that the sink
+    actually reached terminal velocity, so the estimate means something."""
+    mr = __import__("measure_release")
+    d = mr.descent_summary(_sink(kd=2.5, w_deg_s=40.0), kd_used=2.5,
+                           target_deg_s=10.0)
+    assert d["kd_from_speed"] == pytest.approx(d["kd_from_torque"], rel=1e-6)
+
+
+def test_the_recommended_kd_scales_to_the_target_speed():
+    """Sinking 4x too fast means 4x the damping: tau is fixed by gravity, so
+    kd and w trade off inversely."""
+    mr = __import__("measure_release")
+    d = mr.descent_summary(_sink(kd=2.5, w_deg_s=40.0), kd_used=2.5,
+                           target_deg_s=10.0)
+    assert d["kd_from_speed"] == pytest.approx(10.0)
+    assert d["peak_deg_s"] == pytest.approx(40.0)
+
+
+def test_an_unloaded_joint_gets_no_estimate():
+    """wrist_yaw barely sees gravity at the home pose. Extrapolating a kd from
+    a joint that did not sink would recommend a near-zero damping for the one
+    case where damping is the only thing holding the arm."""
+    mr = __import__("measure_release")
+    still = [(i / 50.0, _FakeState(0.0, 0.0, 0.0)) for i in range(20)]
+    d = mr.descent_summary(still, kd_used=0.72, target_deg_s=10.0)
+    assert d["kd_from_speed"] is None
+    assert d["kd_from_torque"] is None
+    assert d["travel_deg"] == pytest.approx(0.0)
+
+
+def test_the_measurement_does_not_write_the_safety_constant():
+    """It prints what it implies and stops there. A script that edited
+    RELEASE_KD from one run on one pose would turn thin evidence into shipped
+    behaviour without anyone reading it."""
+    src = (EXAMPLES / "measure_release.py").read_text()
+    assert "RELEASE_KD =" not in src
+    assert "write_text" not in src
+
+
+def test_the_measurement_run_outlasts_the_production_timeout():
+    """RELEASE_MAX_S is one of the things this run is measuring, so measuring
+    with it would truncate the descent at exactly the point the production
+    path gives up and disables."""
+    import rebot_gripette.follower as follower_mod
+    src = (EXAMPLES / "measure_release.py").read_text()
+    assert '"--max_s", type=float, default=30.0' in src
+    assert follower_mod.RELEASE_MAX_S < 30.0
 
 
 def test_the_connect_check_never_builds_a_trajectory():
