@@ -8,6 +8,9 @@ uv run python -m rebot_gripette_simu --home_joints 0 15 25 -10 0 0
 uv run python -m rebot_gripette_simu --home_joints 0 15 25 -10 0 0 --headless
 ```
 
+Run and confirmed working on 2026-10-28: viewer, both services, and the
+fisheye camera stream.
+
 | Service | Port | Supplied by |
 |---|---|---|
 | GripperService | 50051 | `gripette_sim.gripper_service` — shared with the OpenArm |
@@ -71,6 +74,14 @@ negative x, so this is **not** a mirror of the OpenArm's `table_red_cube.xml`.
 
 The 318 mm is measured from the model. The table's **extent** (0.80 × 0.70 m,
 arm 10 cm in from one edge) is a guess — measure the real bench and change it.
+
+## Known gap: the sim is softer than the arm
+
+With torque on at the home pose the simulated `elbow_flex` droops **7.4°**
+where the real arm droops **2.5°** — the MuJoCo actuator gains are softer than
+the follower's `mit_kp`. Nothing depends on it yet, but a policy trained here
+would see tracking the hardware does not reproduce, so this is the first thing
+to reconcile before any dataset is recorded in sim.
 
 ## Known gap: no collision gate
 
