@@ -29,7 +29,7 @@ import _bringup  # noqa: E402
 @pytest.mark.parametrize("name", ["read_arm_state", "reset_arm", "set_arm_pose",
                                   "cartesian_square", "read_torque_limits",
                                   "mirror_arm", "capture_pose", "check_connect",
-                                  "measure_release"])
+                                  "verify_descent"])
 def test_example_imports_without_a_bus(name):
     """A module that opens CAN at import is a trap: an IDE 'run file', a doc
     tool or a stray import would touch the arm. limits.py already had its
@@ -299,64 +299,53 @@ class _FakeState:
         self.torq = torq
 
 
-def _sink(kd, w_deg_s, from_deg=25.0, n=20):
-    """A joint sinking at terminal velocity: tau = kd*w throughout."""
-    tau = kd * math.radians(w_deg_s)
-    travel = w_deg_s * (n - 1) / 50.0
+def _ramp(from_deg, to_deg, w_deg_s, torq=1.0, n=20):
+    """A joint being lowered along a ramp at a roughly constant rate."""
     return [(i / 50.0,
-             _FakeState(from_deg - travel * i / (n - 1), -w_deg_s, -tau))
+             _FakeState(from_deg + (to_deg - from_deg) * i / (n - 1),
+                        -w_deg_s, -torq))
             for i in range(n)]
 
 
-def test_the_two_kd_estimates_agree_at_terminal_velocity():
-    """They come from different measurements - commanded damping x observed
-    speed, and observed torque. Agreement is the evidence that the sink
-    actually reached terminal velocity, so the estimate means something."""
-    mr = __import__("measure_release")
-    d = mr.descent_summary(_sink(kd=2.5, w_deg_s=40.0), kd_used=2.5,
-                           target_deg_s=10.0)
-    assert d["kd_from_speed"] == pytest.approx(d["kd_from_torque"], rel=1e-6)
+def test_a_lowered_joint_is_scored_against_the_floor():
+    """residual is distance from where it was TOLD to end, not from where it
+    started - that is what says whether the arm actually got down."""
+    vd = __import__("verify_descent")
+    d = vd.descent_errors(_ramp(25.0, 0.4, w_deg_s=10.0), started_at=25.0,
+                          floor=0.0, rate_deg_s=10.0)
+    assert d["travel_deg"] == pytest.approx(24.6)
+    assert d["residual_deg"] == pytest.approx(0.4)
+    assert d["overspeed"] == pytest.approx(1.0)
 
 
-def test_the_recommended_kd_scales_to_the_target_speed():
-    """Sinking 4x too fast means 4x the damping: tau is fixed by gravity, so
-    kd and w trade off inversely."""
-    mr = __import__("measure_release")
-    d = mr.descent_summary(_sink(kd=2.5, w_deg_s=40.0), kd_used=2.5,
-                           target_deg_s=10.0)
-    assert d["kd_from_speed"] == pytest.approx(10.0)
-    assert d["peak_deg_s"] == pytest.approx(40.0)
-
-
-def test_an_unloaded_joint_gets_no_estimate():
-    """wrist_yaw barely sees gravity at the home pose. Extrapolating a kd from
-    a joint that did not sink would recommend a near-zero damping for the one
-    case where damping is the only thing holding the arm."""
-    mr = __import__("measure_release")
-    still = [(i / 50.0, _FakeState(0.0, 0.0, 0.0)) for i in range(20)]
-    d = mr.descent_summary(still, kd_used=0.72, target_deg_s=10.0)
-    assert d["kd_from_speed"] is None
-    assert d["kd_from_torque"] is None
+def test_a_held_joint_is_scored_against_where_it_started():
+    """A held joint's floor IS its start, so the same arithmetic scores both
+    roles and a held joint's residual is its drift."""
+    vd = __import__("verify_descent")
+    d = vd.descent_errors(_ramp(-70.0, -70.0, w_deg_s=0.0), started_at=-70.0,
+                          floor=-70.0, rate_deg_s=10.0)
     assert d["travel_deg"] == pytest.approx(0.0)
+    assert d["residual_deg"] == pytest.approx(0.0)
 
 
-def test_the_measurement_does_not_write_the_safety_constant():
-    """It prints what it implies and stops there. A script that edited
-    RELEASE_KD from one run on one pose would turn thin evidence into shipped
-    behaviour without anyone reading it."""
-    src = (EXAMPLES / "measure_release.py").read_text()
-    assert "RELEASE_KD =" not in src
-    assert "write_text" not in src
+def test_a_joint_that_falls_reads_as_overspeed():
+    """The number that distinguishes a descent from a drop. Position control
+    tracks the commanded rate; a joint running far past it is not being
+    lowered, it is falling."""
+    vd = __import__("verify_descent")
+    d = vd.descent_errors(_ramp(25.0, 0.0, w_deg_s=120.0), started_at=25.0,
+                          floor=0.0, rate_deg_s=10.0)
+    assert d["overspeed"] == pytest.approx(12.0)
 
 
-def test_the_measurement_run_outlasts_the_production_timeout():
-    """RELEASE_MAX_S is one of the things this run is measuring, so measuring
-    with it would truncate the descent at exactly the point the production
-    path gives up and disables."""
-    import rebot_gripette.follower as follower_mod
-    src = (EXAMPLES / "measure_release.py").read_text()
-    assert '"--max_s", type=float, default=30.0' in src
-    assert follower_mod.RELEASE_MAX_S < 30.0
+def test_the_descent_check_does_not_reach_for_damping():
+    """Rung 2.6 used to measure a kd. Damping was measured useless on this arm
+    on 2026-10-28; a script still tuning it would imply it was an option. The
+    docstring still TELLS that story, which is the point - what must be gone is
+    the machinery: raw MIT frames and the kd table."""
+    src = (EXAMPLES / "verify_descent.py").read_text()
+    assert "send_mit" not in src
+    assert "RELEASE_KD" not in src.replace("the shipped RELEASE_KD", "")
 
 
 def test_the_connect_check_never_builds_a_trajectory():

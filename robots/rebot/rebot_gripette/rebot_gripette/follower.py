@@ -65,18 +65,16 @@ from lerobot_robot_seeed_b601.seeed_b601_follower import FOLLOWER_GRIPPER_MOTOR
 
 logger = logging.getLogger(__name__)
 
-# Damping for damped_release(): MIT with kp=0 and these kd values.
+# controlled_descent(): where the arm is put down, and how fast.
 #
-# UNMEASURED. They are the kd halves of the compliant gains from the
-# rebot-lerobot gravity demo, which were tuned WITH a non-zero kp - damping
-# alone behaves differently, and the right value is whatever makes the arm sink
-# slowly without humming. Too low is a drop with extra steps; too high may
-# oscillate. Measure before trusting them.
-RELEASE_KD = {"shoulder_pan": 0.6, "shoulder_lift": 2.5, "elbow_flex": 2.5,
-              "wrist_flex": 0.66, "wrist_yaw": 0.72, "wrist_roll": 0.72}
-RELEASE_RATE_HZ = 50.0
-RELEASE_MAX_S = 8.0
-RELEASE_STILL_DEG_S = 2.0
+# Zero is the LOWER hard stop for both of these joints and the position the arm
+# rests in at power-on, so a disable there costs nothing. They are also the
+# only two joints gravity meaningfully loads (15.45 and 7.15 N.m worst case,
+# see limits.TORQUE_LIMITS); everything else is held where it was.
+DESCENT_FLOOR = {"shoulder_lift": 0.0, "elbow_flex": 0.0}
+DESCENT_DEG_PER_S = 10.0
+DESCENT_RATE_HZ = 50.0
+DESCENT_SETTLE_S = 0.5
 
 
 def _identity_directions() -> dict[str, float]:
@@ -285,65 +283,82 @@ class ReBotFollower(SeeedB601RSFollower):
         return [n for n in self.config.motor_can_ids
                 if n != FOLLOWER_GRIPPER_MOTOR]
 
-    def damped_release(self, kd=None, max_s=RELEASE_MAX_S,
-                       still_deg_s=RELEASE_STILL_DEG_S, on_sample=None) -> bool:
-        """Stop driving the arm WITHOUT dropping it. True once it settled.
+    def controlled_descent(self, deg_per_s=DESCENT_DEG_PER_S,
+                           rate_hz=DESCENT_RATE_HZ, on_sample=None) -> bool:
+        """Put the arm down under POSITION control, then let the caller disable.
 
-        MIT with zero stiffness and non-zero damping: torque proportional to
-        minus the velocity. There is no position target to fight, so the arm
-        can be pushed by hand, but it cannot accelerate. The motors stay
-        ENERGIZED - this is a release, not a disable.
+        Walks shoulder_lift and elbow_flex to DESCENT_FLOOR - their lower hard
+        stops, where the arm rests at power-on and a disable costs nothing -
+        while every other joint is held at the position it had when this was
+        called. True if the descent ran to completion.
 
-        It does NOT hold the arm up. Damping bounds the descent rate; the arm
-        still sinks to where gravity takes it, which on this arm is its stops.
-        That is the point: a drop becomes a controlled sink, so the disable
-        that follows happens with the arm already at rest.
+        WHY NOT DAMPING. This replaced damped_release(), which used MIT with
+        kp=0 and a per-joint kd. The idea was that damping torque -kd*w would
+        turn a drop into a sink. Measured on the arm on 2026-10-28 at the 15/25
+        home pose: indistinguishable from cutting torque. The arithmetic says
+        it always would be. A damped joint sinks at the speed where kd*w equals
+        gravity, so reaching 10 deg/s (0.175 rad/s) against the ~7 N.m this arm
+        carries at the shoulder needs kd ~= 40 - four times the largest value
+        the vendor plugin ever sends (mit_kd shoulder_lift = 10.0), and that
+        value itself only buys 40 deg/s. Damping cannot hold this arm up. Only
+        stiffness can, and stiffness is what position control already applies:
+        the same joints held the home pose to within 2.65 deg of droop.
 
-        Use it wherever the arm must stop being driven but a planned ramp is
-        not available - an abort, an envelope violation, a signal. A planned
-        ending should ramp back down under position control and never rely on
-        this.
+        WHICH JOINTS MOVE. Only the two that gravity loads. shoulder_pan,
+        wrist_yaw and wrist_roll carry no gravity torque, so moving them during
+        an emergency descent would sweep the gripper through the workspace for
+        no benefit; they are commanded to stay put, which is not the same as
+        being left alone - they are still driven, so they resist being dragged
+        by the two joints that are moving. wrist_flex is held for the same
+        reason: its 2 N.m is small enough that where it ends up matters less
+        than the volume it would sweep on the way.
 
-        The idiom is upstream's own: detect_gripper_zero releases the gripper
-        with send_mit(0, 0, 0, 1.5, 0). The per-joint kd values are ours and
-        are unmeasured - see RELEASE_KD.
+        WHAT IT DOES NOT KNOW. Joint space only. Folding toward the stops is
+        the arm's most compact configuration, so the descent reduces reach
+        rather than extending it, but nothing here checks the table, a fixture
+        or anything the gripper may be holding. From a far-extended pose the
+        forearm passes closer to the pedestal than it does from the home pose.
 
         `on_sample(t, states)` is called once per tick with the elapsed seconds
-        and {joint: MotorState}, for examples/measure_release.py to record the
-        descent. It exists so the kd measurement runs against THIS loop rather
-        than a copy of it; a copy could be calibrated and the shipped one still
-        be wrong. Exceptions from it are not caught - a broken recorder must
-        not silently leave the arm undamped.
+        and {joint: MotorState}, for examples/measure_release.py. Exceptions
+        from it are not caught - a broken recorder must not silently stand in
+        for a descent that did not happen.
         """
-        kd = kd or RELEASE_KD
         names = self.arm_motor_names()
-        logger.info(f"damped release: kp=0, kd={ {n: kd[n] for n in names} }")
+        start = {n: v for n, v in self.hold_action().items()}
+        start = {k.removesuffix(".pos"): v for k, v in start.items()}
 
-        t0, still_since = time.time(), None
-        while (t := time.time() - t0) < max_s:
-            for name in names:
-                self.motors[name].send_mit(0.0, 0.0, 0.0, kd[name], 0.0)
+        target = dict(start)
+        for name in DESCENT_FLOOR:
+            if name in target:
+                target[name] = DESCENT_FLOOR[name]
 
-            states = {n: self.motors[n].get_state() for n in names}
+        max_delta = max(abs(target[n] - start[n]) for n in names)
+        duration = max(max_delta / deg_per_s, 1.0 / rate_hz)
+        logger.info(f"controlled descent: {max_delta:.1f} deg at {deg_per_s} "
+                    f"deg/s -> {duration:.1f} s; moving "
+                    f"{sorted(DESCENT_FLOOR)}, holding the rest")
+
+        t0 = time.time()
+        while (t := time.time() - t0) < duration:
+            # Cosine ease, so the descent starts and ends at zero velocity
+            # rather than stepping the target and being chased.
+            s = 0.5 * (1.0 - math.cos(math.pi * min(t / duration, 1.0)))
+            self.send_action({f"{n}.pos": start[n] + (target[n] - start[n]) * s
+                              for n in names})
             if on_sample is not None:
-                on_sample(t, states)
+                on_sample(t, {n: self.motors[n].get_state() for n in names})
+            time.sleep(1.0 / rate_hz)
 
-            speeds = [abs(math.degrees(s.vel))
-                      for s in states.values() if s is not None]
-            worst = max(speeds) if speeds else float("inf")
+        # Hold the floor briefly: the last interpolated target is the floor,
+        # but the arm is still a fraction of a degree behind it under droop.
+        final = {f"{n}.pos": target[n] for n in names}
+        for _ in range(int(rate_hz * DESCENT_SETTLE_S)):
+            self.send_action(final)
+            time.sleep(1.0 / rate_hz)
 
-            if worst < still_deg_s:
-                still_since = t if still_since is None else still_since
-                if t - still_since > 0.5:
-                    logger.info(f"damped release: at rest after {t:.1f} s "
-                                f"(worst {worst:.2f} deg/s)")
-                    return True
-            else:
-                still_since = None
-            time.sleep(1.0 / RELEASE_RATE_HZ)
-
-        logger.warning(f"damped release: still moving after {max_s:.0f} s")
-        return False
+        logger.info("controlled descent: at the floor, safe to disable")
+        return True
 
     def skip_safe_zero_on_disconnect(self) -> None:
         """Stop `disconnect()` driving the arm to zero on the way out.

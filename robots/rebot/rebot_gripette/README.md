@@ -146,6 +146,29 @@ threw is not.
 `tests/test_safe_zero_guard.py` pins the upstream premise and the suppression,
 and fails if a `disconnect()` ever appears without one.
 
+## Putting the arm down
+
+`disconnect()` disables every motor, so ending a run with the arm up is a drop.
+It dropped the arm from 77° on 2026-10-27. Every teardown now ends with
+`ReBotFollower.controlled_descent()`: `shoulder_lift` and `elbow_flex` are
+lowered to 0° — their lower hard stops, where the arm rests at power-on — under
+position control at 10°/s, while the other four joints are held where they are
+so the gripper goes down rather than sweeping across the workspace.
+
+**It is not a damped release, and that was measured, not assumed.** The first
+attempt used MIT with `kp=0` and a per-joint `kd`, on the theory that damping
+torque would turn a drop into a sink. Run from the 15/25 home on 2026-10-28 it
+was indistinguishable from cutting torque. The arithmetic says it always would
+be: a damped joint sinks at the speed where `kd·ω` balances gravity, so 10°/s
+against the ~7 N·m this arm carries at the shoulder needs `kd ≈ 40` — four
+times the largest value the vendor plugin ever sends, and that value alone only
+buys ~40°/s. Damping cannot hold this arm up. Stiffness can, and position
+control already applies it.
+
+Rung 2.6, `verify_descent.py`, scores a descent against its commanded ramp: did
+the lowered joints reach the floor, did the held joints hold, did anything run
+faster than the commanded rate. **Not yet run on hardware.**
+
 ## Motor 7 is read-only
 
 The reBot's rack gripper is still physically mounted and still on the CAN bus,
@@ -175,6 +198,7 @@ hand on the power:
 | 1 | `read_arm_state.py` | **No.** Motors stay disabled; position comes from parameter reads |
 | 1.5 | `check_connect.py` | Energizes, holds where the arm already is. No trajectory |
 | 2 | `reset_arm.py --home_joints …` | Yes — the first commanded motion |
+| 2.6 | `verify_descent.py --home_joints …` | Yes — checks how the arm gets put down |
 | 3 | `set_arm_pose.py --joints …` | Yes — any absolute pose |
 | 4 | `cartesian_square.py --size_cm 2` | Yes — first rung with IK in the loop |
 | 5 | `cartesian_square.py --size_cm 10` | Yes |

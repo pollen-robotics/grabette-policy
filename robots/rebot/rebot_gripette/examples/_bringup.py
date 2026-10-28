@@ -185,20 +185,21 @@ def connect_follower(can, device_id, gravity_compensation=False):
     return robot
 
 
-def damped_release(robot, **kwargs):
-    """Stop driving the arm without dropping it. See ReBotFollower.damped_release.
+def controlled_descent(robot, **kwargs):
+    """Put the arm down under position control. See ReBotFollower.
 
     Lives on the follower, not here: the gRPC server's signal handler needs the
     same behaviour, and examples/ is not importable from the package.
     """
-    print("  [release] damping to a stop (kp=0); the arm sinks, it does not drop")
-    settled = robot.damped_release(**kwargs)
-    print("  [release] at rest" if settled else
-          "  [release] STILL MOVING - disabling anyway")
-    return settled
+    print("  [descent] lowering shoulder_lift and elbow_flex to their stops "
+          "under position control; the other joints are held")
+    done = robot.controlled_descent(**kwargs)
+    print("  [descent] at the floor" if done else
+          "  [descent] DID NOT COMPLETE - disabling anyway")
+    return done
 
 
-def disconnect_follower(robot, release=True):
+def disconnect_follower(robot, descend=True):
     """Teardown that does not move the arm, and does not drop it either.
 
     Two separate hazards, and both have bitten this arm:
@@ -210,15 +211,14 @@ def disconnect_follower(robot, release=True):
         disable_torque_on_disconnect defaults True. With the arm extended that
         is a drop. On 2026-10-27 it dropped the arm from 77 degrees.
 
-    `release` damps the arm to a stop first, so the disable happens with
-    nothing moving. Pass release=False only when the arm is already at rest on
-    its stops.
+    `descend` lowers the arm to its stops first, so the disable happens with
+    the arm already down. Pass descend=False only when it is already there.
     """
-    if release:
-        damped_release(robot)
+    if descend:
+        controlled_descent(robot)
     robot.skip_safe_zero_on_disconnect()
     robot.disconnect()
-    print("disconnected; the arm was not moved on the way out")
+    print("disconnected; the arm was put down, not dropped")
 
 
 # --------------------------------------------------------------------------- #

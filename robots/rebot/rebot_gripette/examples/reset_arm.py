@@ -32,9 +32,10 @@ happened on 2026-10-27, from 77 degrees. The default ending therefore returns
 the arm to where it started, on its stops, where a disable costs nothing.
 
 --stay_held skips the descent and leaves the arm up with torque on, for a
-server about to take over. Anything that goes wrong instead uses a damped
-release: zero stiffness, non-zero damping, so the arm sinks slowly rather than
-dropping. See _bringup.damped_release.
+server about to take over. Anything that goes wrong instead lowers the two
+gravity-loaded joints to their stops under position control, holding the rest
+where they are. See ReBotFollower.controlled_descent - and in particular why
+it is not the damped release this used to do.
 
 Step 4 is the equivalent of the kp ramp used in the raw-CAN bring-up scripts:
 the plugin owns the gains, so the way to avoid a jolt is to start the
@@ -46,9 +47,9 @@ import sys
 import numpy as np
 
 from _bringup import (ARM_MOTORS, MOTORS, cold_read_positions, connect_follower,
-                      damped_release, disconnect_follower, hold, leg_duration,
-                      motor_pose, print_pose, require_full_read, run_leg,
-                      urdf_limits)
+                      controlled_descent, disconnect_follower, hold,
+                      leg_duration, motor_pose, print_pose, require_full_read,
+                      run_leg, urdf_limits)
 
 
 def main():
@@ -128,7 +129,7 @@ def main():
                   "with gravity compensation off.")
     finally:
         _teardown(robot, held, duration, ok, args.stay_held)
-        print("ABORTED - the arm was released, not dropped." if not ok
+        print("ABORTED - the arm was put down, not dropped." if not ok
               else "Done.")
 
 
@@ -142,9 +143,17 @@ def _teardown(robot, start_motor, duration, ok, stay_held):
                  motors are left energized deliberately; nothing here is
                  watching them afterwards.
       ok         ramp back down to where the arm started, on its stops, and
-                 only then release. A disable there costs nothing.
-      aborted    something is already wrong, so a ramp is not trustworthy.
-                 Damped release: the arm sinks slowly instead of dropping.
+                 only then disable. A disable there costs nothing.
+      aborted    lower the two gravity-loaded joints to their stops, holding
+                 the others, and disable at the bottom.
+
+    The aborted case used to do a damped release instead, on the reasoning
+    that a ramp cannot be trusted once something is already wrong. That was
+    the wrong trade: the envelope aborts on deviation, torque or temperature,
+    and position control still works in all three, while the release was
+    measured to be indistinguishable from cutting torque. The case where the
+    descent genuinely cannot run is a motor that has stopped answering - and
+    damping did nothing there either.
     """
     if stay_held:
         print("\n--stay_held: leaving the arm at the home pose with TORQUE ON.")
@@ -158,12 +167,12 @@ def _teardown(robot, start_motor, duration, ok, stay_held):
         print(f"\n[return] ramping back to the start pose over {duration:.1f} s")
         now = motor_pose(robot)
         if run_leg(robot, now, start_motor, duration, "return"):
-            disconnect_follower(robot, release=False)   # already on its stops
+            disconnect_follower(robot, descend=False)   # already on its stops
             return
-        print("  the return leg aborted - releasing from wherever it stopped")
+        print("  the return leg aborted - lowering from wherever it stopped")
 
-    damped_release(robot)
-    disconnect_follower(robot, release=False)           # just released
+    controlled_descent(robot)
+    disconnect_follower(robot, descend=False)           # just put down
 
 
 if __name__ == "__main__":

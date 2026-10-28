@@ -175,7 +175,7 @@ def main():
         sys.exit(1)
 
     def shutdown(signum, _frame):
-        logger.warning(f"Signal {signum} — stopping, releasing the arm.")
+        logger.warning(f"Signal {signum} — stopping, putting the arm down.")
         servicer.stop()
         # An interrupt must not start a motion. Without this, disconnect()
         # calls safe_zero() and drives the arm to zero — two hard stops on this
@@ -183,13 +183,14 @@ def main():
         robot.skip_safe_zero_on_disconnect()
         try:
             # ...and it must not drop the arm either. Cutting torque outright
-            # is a free fall from wherever the policy left it; this damps to a
-            # stop first, so the disable below happens with nothing moving.
-            # The arm still ends low — damping bounds the descent, it does not
-            # hold against gravity — but it arrives rather than falls.
-            robot.damped_release()
+            # is a free fall from wherever the policy left it. This lowers the
+            # two gravity-loaded joints to their stops under position control
+            # first — a few seconds — so the disable below happens with the arm
+            # already down. Damping was tried here and measured useless on
+            # 2026-10-28; see ReBotFollower.controlled_descent.
+            robot.controlled_descent()
         except Exception:
-            logger.exception("Damped release failed; disabling torque anyway.")
+            logger.exception("Controlled descent failed; disabling torque anyway.")
         try:
             arm_iface.set_torque(False)
         finally:
