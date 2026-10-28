@@ -69,13 +69,44 @@ Gripette is exactly level. The result sits **9.6 mm** from where the hand was:
 The Gripette is level exactly when `shoulder_lift + elbow_flex + wrist_flex =
 30°`, so rounding and levelling are one operation.
 
-**Known limitation, recorded rather than acted on:** this pose cannot trace a
-10 cm Cartesian square in all three planes — it branch-flips in two of them,
-because the gripper sits 165 mm from the base, close to the shoulder axis,
-where lateral motion conditions worst. Poses ~120 mm further out manage it
-comfortably. Whether that matters depends on where the policy actually works,
-which rungs 4–5 will show; it is not a reason to move the home pose in
-advance.
+**Known limitation, now measured.** Dry runs from this pose on 2026-10-28:
+
+| square | result |
+|---|---|
+| 2 cm, x plane | clean — 0.00 mm residual, worst joint step 1.3° |
+| 10 cm, x plane | clean — worst joint step 6.3° |
+| 10 cm, y plane | **fails** — waypoint 20 residual 8.4 mm, waypoint 21 steps 90° |
+| 10 cm, z plane | **fails** — waypoint 20 residual 4.5 mm, waypoint 21 steps 54.8° |
+
+Both failures are at the same corner and both are branch flips rather than
+solver errors — the signature of 6 DoF with no null space to escape through.
+The gripper sits 165 mm from the base, close to the shoulder axis, where
+lateral motion conditions worst.
+
+This is **not** a reason to move the home pose. The square validates the
+kinematics chain — URDF, joint signs, calibration, solver — and the experiment's
+start pose does not have to be the pose that validation runs from. Trace the
+square from wherever it solves cleanly; keep the home pose where the operator
+put it.
+
+### Steady-state droop, measured twice
+
+With gravity compensation off, two joints sit short of their targets at the
+home pose, reproducibly:
+
+| joint | commanded | rung 2 | rung 3 |
+|---|---|---|---|
+| `elbow_flex` | 25° | 22.35 (−2.65) | 22.46 (−2.54) |
+| `wrist_flex` | −10° | −12.35 (−2.35) | −12.37 (−2.37) |
+
+That is the figure `ABORT_DEG = 5.0` has to live above: ~2.4° of headroom
+before normal droop alone trips the envelope, which is why `--deg_per_s` cannot
+rise far above 2 without widening the envelope to match.
+
+**The `shoulder_lift` overshoot does not appear here.** At 75/75 it overshot
+~2° and stayed; the rung 3 return leg landed within **0.07°** of its start, and
+every other joint within 0.25°. The overshoot is specific to the over-centre
+region, where gravity assists the motion, not a property of the joint.
 
 ### Starting pose, for the record
 
@@ -170,6 +201,14 @@ the lowered joints reach the floor, did the held joints hold, did anything run
 faster than the commanded rate. Run from the 15/25 home on 2026-10-28: the arm
 was put down as commanded. That is the first teardown on this arm that carried
 its weight all the way to the stops rather than letting go of it.
+
+"The floor" is approximate, and harmlessly so. `shoulder_lift` ends on its stop,
+but `elbow_flex` was read at **+3.8°** at the start of the next run — the
+descent commands 0 and the same droop that leaves it 2.5° short at the home
+pose leaves it a few degrees high here, and it stays there when the motors are
+disabled rather than settling further. A few degrees of fold is not energy
+worth chasing; what matters is that the arm is at rest before the disable, and
+it has been on every run since.
 
 ## Motor 7 is read-only
 
