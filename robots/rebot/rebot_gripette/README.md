@@ -81,12 +81,19 @@ The Gripette is level exactly when `shoulder_lift + elbow_flex + wrist_flex =
 Both failures are at the same corner and both are branch flips rather than
 solver errors — the signature of 6 DoF with no null space to escape through.
 
-**Rung 4 ran on the arm on 2026-10-28** — the 2 cm square in the x plane, from
-this pose, clean. The first attempt traced it as 41 separate legs and was
-unreadable by eye: `leg_duration` floors a leg at `MIN_LEG_S = 2.0`, the
-segments are 0.5–1.3°, so the arm stopped 41 times and took 80 s to cover 36°
-of joint travel. `_bringup.run_path` traces the whole waypoint list as one
-motion; at `--deg_per_s 6` the square takes about 7 s and looks like a square.
+**Rungs 4 and 5 both ran on the arm on 2026-10-28**, in the x plane from this
+pose: 2 cm clean, then 10 cm clean — 149.8° of joint travel, 26 s at 6°/s,
+worst joint step 6.3°. That completes the bring-up ladder. The kinematics
+chain — URDF, joint signs, calibration, solver — agrees with the hardware at
+both amplitudes.
+
+Rung 4's first attempt traced the square as 41 separate legs and was unreadable
+by eye: `leg_duration` floors a leg at `MIN_LEG_S = 2.0`, the segments are
+0.5–1.3°, so the arm stopped 41 times and took 80 s to cover 36° of joint
+travel. `_bringup.run_path` traces the whole waypoint list as one motion, with
+a single ease at each end, and `path_duration`/`distance_along` are pure so the
+MuJoCo preview replays the identical profile rather than a plausible-looking
+one.
 
 A search over 4 500 poses found **2 143** that trace 10 cm cleanly in all three
 planes, the nearest being `0 35 25 -10 0 0` — the home pose with `shoulder_lift`
@@ -246,16 +253,22 @@ about can abort the whole bring-up. It measured −235.29° and did exactly that
 Never skip a rung, and never run any of it without a human in the loop and a
 hand on the power:
 
-| # | Script | Moves the arm? |
-|---|---|---|
-| 0 | `mirror_arm.py` | **No.** Torque off throughout; you move the arm by hand |
-| 1 | `read_arm_state.py` | **No.** Motors stay disabled; position comes from parameter reads |
-| 1.5 | `check_connect.py` | Energizes, holds where the arm already is. No trajectory |
-| 2 | `reset_arm.py --home_joints …` | Yes — the first commanded motion |
-| 2.6 | `verify_descent.py --home_joints …` | Yes — checks how the arm gets put down |
-| 3 | `set_arm_pose.py --joints …` | Yes — any absolute pose |
-| 4 | `cartesian_square.py --size_cm 2` | Yes — first rung with IK in the loop |
-| 5 | `cartesian_square.py --size_cm 10` | Yes |
+| # | Script | Moves the arm? | Run on this arm |
+|---|---|---|---|
+| 0 | `mirror_arm.py` | **No.** Torque off throughout; you move the arm by hand | 2026-10-27 |
+| 1 | `read_arm_state.py` | **No.** Motors stay disabled; position comes from parameter reads | 2026-10-27/28 |
+| 1.5 | `check_connect.py` | Energizes, holds where the arm already is. No trajectory | 2026-10-27 |
+| 2 | `reset_arm.py --home_joints …` | Yes — the first commanded motion | 2026-10-27 |
+| 2.6 | `verify_descent.py --home_joints …` | Yes — checks how the arm gets put down | 2026-10-28 |
+| 3 | `set_arm_pose.py --joints …` | Yes — any absolute pose | 2026-10-28 |
+| 4 | `cartesian_square.py --size_cm 2 --home_joints …` | Yes — first rung with IK in the loop | 2026-10-28 |
+| 5 | `cartesian_square.py --size_cm 10 --home_joints …` | Yes | 2026-10-28 |
+
+Every rung has now been run on this arm, in the x plane for 4 and 5. Pass
+`--home_joints` to 4 and 5: without it the square is solved from wherever the
+arm is sitting, which after any teardown is folded on its stops, and the trace
+then runs a fraction of a degree from `shoulder_lift`'s hard stop while
+reporting a clean residual.
 
 `cartesian_square.py --dry_run --from_joints …` solves the whole path offline
 and reports the IK residual and largest joint step per waypoint. Run it before
