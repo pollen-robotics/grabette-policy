@@ -393,6 +393,34 @@ def test_a_repeated_waypoint_does_not_divide_by_zero():
     assert _bringup.pose_along(segs, 2.0, wps[-1])["a"] == pytest.approx(2.0)
 
 
+def test_the_cruise_rate_is_the_rate_that_was_asked_for():
+    """The ease is over a fixed time at each end, not a cosine across the whole
+    path. A cosine would speed the middle up to make up for the slow ends, so
+    --deg_per_s would not be the speed the arm moves at."""
+    total, rate, ease_s = 100.0, 5.0, 1.0
+    d0 = _bringup.distance_along(10.0, total, rate, ease_s)
+    d1 = _bringup.distance_along(11.0, total, rate, ease_s)
+    assert d1 - d0 == pytest.approx(rate)   # one second of cruise = one rate
+
+
+def test_a_path_starts_and_ends_at_rest():
+    """Zero velocity at both ends: the arm eases in rather than being stepped,
+    and settles rather than stopping dead."""
+    total, rate = 100.0, 5.0
+    assert _bringup.distance_along(0.0, total, rate) == pytest.approx(0.0)
+    # The first tenth of the ease covers far less than a tenth of cruise.
+    assert _bringup.distance_along(0.1, total, rate) < 0.1 * rate * 0.5
+    end = _bringup.path_duration(total, rate)
+    assert _bringup.distance_along(end, total, rate) == pytest.approx(total)
+
+
+def test_the_eased_ends_cost_exactly_one_ease_window():
+    """Stated in path_duration's docstring, so it should be true: the two
+    half-eases together add ease_s to the constant-rate time."""
+    assert _bringup.path_duration(100.0, 5.0, ease_s=1.0) == pytest.approx(21.0)
+    assert _bringup.path_duration(100.0, 5.0, ease_s=2.0) == pytest.approx(22.0)
+
+
 def test_the_square_closure_compares_two_measurements():
     """Closure against the COMMANDED start pose reports steady-state droop -
     2.5 deg on this arm - and calls it closure error. Both ends must be

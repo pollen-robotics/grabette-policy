@@ -324,6 +324,33 @@ def pose_along(segs, d, last):
     return dict(last)
 
 
+def path_duration(total_deg, deg_per_s=DEG_PER_S, ease_s=1.0):
+    """Seconds a traced path takes, eased ends included.
+
+    The two half-eases together cost exactly `ease_s` of extra time: each end
+    covers half the distance it would at full rate over that window.
+    """
+    return total_deg / deg_per_s + ease_s
+
+
+def distance_along(t, total_deg, deg_per_s=DEG_PER_S, ease_s=1.0):
+    """Distance covered by time `t`, easing in and out at a constant cruise.
+
+    The ease is over a fixed TIME at each end rather than a cosine across the
+    whole path: a cosine would make the middle faster than deg_per_s to make
+    up for the slow ends, so the rate asked for would not be the rate seen.
+
+    Separate from run_path so a simulation can replay the same profile. A
+    preview whose pacing does not match the hardware is not a preview of it.
+    """
+    duration = path_duration(total_deg, deg_per_s, ease_s)
+    if t <= ease_s:
+        return deg_per_s * ease_s * ease(t / ease_s) / 2.0
+    if t >= duration - ease_s:
+        return total_deg - deg_per_s * ease_s * ease((duration - t) / ease_s) / 2.0
+    return deg_per_s * (t - ease_s / 2.0)
+
+
 def run_path(robot, waypoints_motor, deg_per_s=DEG_PER_S, label="path",
              abort_deg=ABORT_DEG, sample_s=1.0, ease_s=1.0):
     """Walk a whole waypoint list as ONE continuous motion. True if completed.
@@ -348,27 +375,14 @@ def run_path(robot, waypoints_motor, deg_per_s=DEG_PER_S, label="path",
     if total <= 1e-9:
         return True
 
-    # Ease in and out over a fixed TIME at each end, with a constant-rate
-    # middle: a cosine over the whole path would make the middle faster than
-    # deg_per_s to compensate for the slow ends.
-    cruise_s = total / deg_per_s
-    duration = cruise_s + ease_s          # the two half-eases cost ease_s
+    duration = path_duration(total, deg_per_s, ease_s)
     print(f"  {label}: {len(waypoints_motor)} waypoints, {total:.1f} deg of "
           f"joint travel at {deg_per_s:g} deg/s -> {duration:.1f} s")
 
-    def distance_at(t):
-        """Distance along the path at time t, with eased ends."""
-        if t <= ease_s:
-            return deg_per_s * ease_s * ease(t / ease_s) / 2.0
-        if t >= duration - ease_s:
-            r = (duration - t) / ease_s
-            return total - deg_per_s * ease_s * ease(r) / 2.0
-        return deg_per_s * (t - ease_s / 2.0)
-
     t0, next_sample = time.time(), 0.0
     while (t := time.time() - t0) < duration:
-        targets = pose_along(segs, min(distance_at(t), total),
-                             waypoints_motor[-1])
+        d = distance_along(t, total, deg_per_s, ease_s)
+        targets = pose_along(segs, min(d, total), waypoints_motor[-1])
         send_motor_pose(robot, targets)
 
         if t >= next_sample:
