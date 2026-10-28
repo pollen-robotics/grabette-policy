@@ -36,7 +36,8 @@ from gripette_sim.clearance import GeomClearance
 from gripette_sim.gripper_service import GripperServicer
 from rebot_gripette.spec import REBOT_SPEC
 
-from .obstacles import GUARDED_BODIES, OBSTACLE_GEOMS, TABLE_MARGIN
+from rebot_gripette.obstacles import (GUARDED_BODIES, OBSTACLE_GEOMS,
+                                      TABLE_MARGIN)
 from .sim_arm_interface import SimArmInterface
 from .simulation import Simulation
 

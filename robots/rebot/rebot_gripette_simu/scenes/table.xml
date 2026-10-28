@@ -8,9 +8,16 @@
   dataset are all expressed from a base at the origin. Moving the robot to sit
   on a table would silently offset all of them; moving the table costs nothing.
 
-      tabletop   z -0.030 .. 0.000   (the arm bolts to its top face)
-      legs       z -0.730 .. -0.030
+      tabletop   z -0.100 .. 0.000   (the arm bolts to its top face)
+      legs       z -0.730 .. -0.100
       floor      z -0.730
+
+  The slab is 10 cm thick to MATCH rebot_b601rs/bench.xml, the bare model the
+  real server measures its clearance gate against. That is not decoration: the
+  gate uses mj_geomDistance, which measures to the NEAREST FACE, so a link
+  driven clean through a thin plate reads as close to the underside rather
+  than deeply penetrating. A 3 cm top and a 10 cm slab gave different verdicts
+  for the same pose. Same thickness, same gate in sim and on the arm.
 
   NOT a mirror of the OpenArm's table_red_cube.xml. This arm reaches in -x.
   Measured from the model at the home pose 0 15 25 -10 0 0:
@@ -62,15 +69,15 @@
 
         <!-- The bench. Static geoms (no body joint): the table does not move,
              and the arm is bolted to it. -->
-        <geom name="tabletop" type="box" size="0.40 0.35 0.015" pos="-0.30 0 -0.015"
+        <geom name="tabletop" type="box" size="0.40 0.35 0.05" pos="-0.30 0 -0.05"
             material="wood" />
-        <geom name="leg_1" type="box" size="0.02 0.02 0.35" pos="0.06 0.31 -0.38"
+        <geom name="leg_1" type="box" size="0.02 0.02 0.315" pos="0.06 0.31 -0.415"
             material="wood" />
-        <geom name="leg_2" type="box" size="0.02 0.02 0.35" pos="-0.66 0.31 -0.38"
+        <geom name="leg_2" type="box" size="0.02 0.02 0.315" pos="-0.66 0.31 -0.415"
             material="wood" />
-        <geom name="leg_3" type="box" size="0.02 0.02 0.35" pos="0.06 -0.31 -0.38"
+        <geom name="leg_3" type="box" size="0.02 0.02 0.315" pos="0.06 -0.31 -0.415"
             material="wood" />
-        <geom name="leg_4" type="box" size="0.02 0.02 0.35" pos="-0.66 -0.31 -0.38"
+        <geom name="leg_4" type="box" size="0.02 0.02 0.315" pos="-0.66 -0.31 -0.415"
             material="wood" />
 
         <!-- A 4 cm cube on the table, directly under the home-pose gripper

@@ -22,6 +22,11 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+# The bench clearance gate needs MuJoCo geometry queries. Optional because a
+# machine that only drives the arm need not carry the simulation stack; the
+# server logs loudly and runs unguarded if it is absent, rather than pretending
+# to be guarded.
+clearance = ["gripette-sim"]
 
 [build-system]
 requires = ["hatchling"]
@@ -31,5 +36,6 @@ build-backend = "hatchling.build"
 packages = ["rebot_gripette"]
 
 [tool.uv.sources]
+gripette-sim = { workspace = true }
 gripette-core = { workspace = true }
 rebot-gripette-model = { workspace = true }

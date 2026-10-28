@@ -189,7 +189,7 @@ def test_the_arm_is_bolted_to_the_table_not_standing_beside_it():
     xml = DEFAULT_SCENE.read_text()
     assert 'name="tabletop"' in xml
     # Top face at z=0: centre -0.015 with half-thickness 0.015.
-    assert 'size="0.40 0.35 0.015" pos="-0.30 0 -0.015"' in xml
+    assert 'size="0.40 0.35 0.05" pos="-0.30 0 -0.05"' in xml
     assert 'pos="0 0 -0.73"' in xml, "the floor must be below the table"
     # offscreen buffer must cover the camera calibration resolution
     assert 'offwidth="1296"' in xml and 'offheight="972"' in xml
@@ -201,7 +201,7 @@ def test_the_table_is_under_the_arms_reach():
     from rebot_gripette_simu.server import DEFAULT_SCENE
 
     xml = DEFAULT_SCENE.read_text()
-    assert 'pos="-0.30 0 -0.015"' in xml, "the tabletop must be at negative x"
+    assert 'pos="-0.30 0 -0.05"' in xml, "the tabletop must be at negative x"
 
 
 def test_the_simulated_base_cannot_move():
@@ -227,8 +227,8 @@ def clearance():
     from gripette_sim.clearance import GeomClearance
     from gripette_sim.simulation import _load_model
     from rebot_gripette.spec import REBOT_SPEC
-    from rebot_gripette_simu.obstacles import (GUARDED_BODIES, OBSTACLE_GEOMS,
-                                               TABLE_MARGIN)
+    from rebot_gripette.obstacles import (GUARDED_BODIES, OBSTACLE_GEOMS,
+                                          TABLE_MARGIN)
     from rebot_gripette_simu.server import DEFAULT_SCENE
 
     model = _load_model(DEFAULT_SCENE)
@@ -285,7 +285,7 @@ def test_retreating_from_inside_the_margin_is_always_allowed(clearance):
 def test_the_inner_links_are_deliberately_unguarded():
     """They are in permanent contact: the arm is BOLTED to this surface. Named
     explicitly so adding them back is a decision, not an accident."""
-    from rebot_gripette_simu.obstacles import GUARDED_BODIES
+    from rebot_gripette.obstacles import GUARDED_BODIES
 
     for base_link in ("axis_1", "axis_2", "axis_3"):
         assert base_link not in GUARDED_BODIES

@@ -1,5 +1,9 @@
 """What the reBot must not drive into, and which of its links can get there.
 
+Lives in the HARDWARE package, not the simulator: this is a statement about the
+robot's own links, and the gate it feeds is on the shared arm service, so the
+real server needs it as much as the sim does.
+
 The OpenArm guards a box proxy around its mounting column. The reBot's hazard
 is the bench it is bolted to: a large horizontal surface it can fold down onto
 and reach into. Same query (`gripette_sim.clearance`), different geometry.
@@ -29,8 +33,11 @@ LIMITS
     the top. Nothing here knows about an object in the gripper.
 """
 
-# Geoms in scenes/table.xml the arm must stay clear of.
-OBSTACLE_GEOMS = ("tabletop",)
+# Geoms the arm must stay clear of. Two scenes define a work surface and the
+# gate is given whichever is loaded: "tabletop" in the simulator's furnished
+# scene, "bench" in the bare slab the real server measures against. Naming
+# both means one declaration serves sim and hardware.
+OBSTACLE_GEOMS = ("tabletop", "bench")
 
 # Links that can actually reach them. Names are MuJoCo body names from the
 # export; 实体1 is the gripper mount plate, named by the Onshape source.

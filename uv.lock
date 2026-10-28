@@ -3626,6 +3626,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+clearance = [
+    { name = "gripette-sim" },
+]
 test = [
     { name = "pytest" },
 ]
@@ -3633,12 +3636,13 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "gripette-core", extras = ["kinematics"], editable = "libs/gripette-core" },
+    { name = "gripette-sim", marker = "extra == 'clearance'", editable = "libs/gripette-sim" },
     { name = "lerobot-robot-seeed-b601", marker = "python_full_version >= '3.12'", specifier = ">=1.0.3" },
     { name = "numpy" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
     { name = "rebot-gripette-model", editable = "robots/rebot/rebot_gripette_model" },
 ]
-provides-extras = ["test"]
+provides-extras = ["test", "clearance"]
 
 [[package]]
 name = "rebot-gripette-model"

@@ -21,6 +21,16 @@ LIMITS, WORTH STATING
     Only the geoms named as obstacles are checked, and only the bodies named
     as guarded. It is not a general self-collision check, and it knows nothing
     about anything the gripper is holding.
+
+    The distance stops being a DEPTH once a link is through the surface:
+    mj_geomDistance returns 0 for an intersecting mesh/box rather than a
+    negative penetration, so two scenes modelling the same bench can report
+    different numbers for the same breaching pose. Both still refuse it - the
+    verdict is "under the margin", not "how far under" - which is what the
+    gate rests on. The one place the magnitude is used is the retreat
+    exception below, so retreating from a pose that is already THROUGH the
+    surface may not be recognised as retreat. Getting there is the failure the
+    gate exists to prevent; recovering from it is a job for a human.
 """
 
 import logging

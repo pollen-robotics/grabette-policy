@@ -1,0 +1,26 @@
+<!--
+  The reBot bolted to its bench, with NO scenery.
+
+  This exists so the clearance gate has geometry to measure against on a
+  machine that is driving the real arm, where the simulator's scene (table
+  legs, cube, textures, skybox) is neither available nor wanted.
+
+  The arm is bolted to the bench, so the work surface is the plane z=0 by
+  construction - that number needs no measurement. The EXTENT is deliberately
+  generous (2 m square) because the error is one-sided: a modelled bench
+  LARGER than the real one refuses poses that would have been safe out past
+  the real edge, while a smaller one leaves a hole the gate does not cover.
+  Over-refusing is the direction to err in.
+
+  The slab is 10 cm thick and sits entirely below z=0, so its top face is the
+  work surface. contype/conaffinity are 0: nothing here is simulated, the geom
+  exists only to be measured against with mj_geomDistance, which works
+  regardless.
+-->
+<mujoco model="rebot_bench">
+  <include file="robot.xml" />
+  <worldbody>
+    <geom name="bench" type="box" size="1.0 1.0 0.05" pos="0 0 -0.05"
+          contype="0" conaffinity="0" rgba="0.6 0.45 0.25 0.4" />
+  </worldbody>
+</mujoco>

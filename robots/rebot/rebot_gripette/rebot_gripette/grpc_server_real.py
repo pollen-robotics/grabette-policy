@@ -103,8 +103,76 @@ def parse_args():
     p.add_argument("--max_ik_jump_deg", type=float, default=15.0)
     p.add_argument("--max_ik_jump_violations", type=int, default=2)
     p.add_argument("--max_target_lead_mm", type=float, default=50.0)
+    p.add_argument("--clearance_margin_mm", type=float, default=20.0,
+                   help="keep the guarded links this far from the bench. 0 "
+                        "disables the gate - see --no_clearance.")
+    p.add_argument("--no_clearance", action="store_true",
+                   help="run WITHOUT the bench clearance gate. The IK-jump "
+                        "watchdog still catches branch flips, but nothing "
+                        "then stops a smooth IK solution driving into the "
+                        "bench. Intended for a bench-less rig, not as a way "
+                        "to silence a gate that is firing.")
     p.add_argument("--log_level", default="INFO")
     return p.parse_args()
+
+
+def _build_clearance_gate(args, arm_iface):
+    """The bench clearance gate, or None if it is off or unavailable.
+
+    The IK-jump watchdog catches the SOLVER flipping branch. It cannot catch a
+    smooth run of well-conditioned solutions that walks into the bench the arm
+    is bolted to, because nothing about those solutions is ill-conditioned.
+    This is the guard for that, and it is the same `joint_gate` hook the
+    simulator uses - one implementation, measured against the same declared
+    links (rebot_gripette.obstacles).
+
+    MuJoCo is an OPTIONAL dependency of this package: a machine that only
+    drives the arm need not carry the simulation stack. Without it the gate
+    cannot be built, and the server says so loudly rather than coming up
+    silently unguarded - a missing safety gate must never look like a working
+    one.
+    """
+    if args.no_clearance:
+        logger.warning(
+            "--no_clearance: the bench clearance gate is OFF. The IK-jump "
+            "watchdog still catches branch flips, but NOTHING stops a smooth "
+            "IK solution driving the arm into the bench.")
+        return None
+
+    try:
+        from gripette_sim.clearance import GeomClearance
+        from gripette_sim.simulation import _load_model
+    except ImportError as e:
+        logger.error(
+            f"Bench clearance gate UNAVAILABLE ({e}). The arm will run with "
+            f"the IK-jump watchdog only - nothing stops a smooth IK solution "
+            f"driving into the bench. Install the clearance extra "
+            f"(`uv sync --package rebot-gripette --extra clearance`), or pass "
+            f"--no_clearance to accept this deliberately.")
+        return None
+
+    from rebot_gripette.obstacles import GUARDED_BODIES, OBSTACLE_GEOMS
+    from rebot_gripette_model import REBOT_B601RS_BENCH
+
+    model = _load_model(REBOT_B601RS_BENCH)
+    clearance = GeomClearance(
+        model, OBSTACLE_GEOMS, GUARDED_BODIES, list(REBOT_SPEC.joint_names),
+        margin=args.clearance_margin_mm / 1000.0)
+    if not clearance.enabled:
+        logger.error(
+            "Bench clearance gate found no geometry to guard - running "
+            "UNGUARDED. Check rebot_gripette.obstacles against the model.")
+        return None
+
+    logger.info(
+        f"Bench clearance gate armed: {args.clearance_margin_mm:.0f} mm from "
+        f"the bench, guarding {len(GUARDED_BODIES)} links. A command that "
+        f"would breach it is REFUSED and the arm holds its last good pose; "
+        f"moves that increase clearance are always allowed.")
+    # `current_joints` is what lets an arm already inside the margin retreat.
+    # Without it every escape command is also inside the margin and the arm is
+    # deadlocked until the server is killed.
+    return clearance.as_joint_gate(current_joints=arm_iface.get_positions)
 
 
 def main():
@@ -143,11 +211,14 @@ def main():
         orientation_weight=args.ik_orientation_weight,
     )
 
+    joint_gate = _build_clearance_gate(args, arm_iface)
+
     servicer = ArmServicer(
         arm_iface,
         kin,
         home_joints,
         start_time,
+        joint_gate=joint_gate,
         interp_hz=args.interp_hz,
         interp_alpha=args.interp_alpha,
         max_ik_jump_deg=args.max_ik_jump_deg,
