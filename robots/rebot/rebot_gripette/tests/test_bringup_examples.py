@@ -338,6 +338,46 @@ def test_a_joint_that_falls_reads_as_overspeed():
     assert d["overspeed"] == pytest.approx(12.0)
 
 
+def test_the_square_solved_from_the_stops_hugs_a_limit():
+    """Why cartesian_square.py grew --home_joints. The solver reports IK
+    residual and joint step; neither says anything about how close the path
+    sits to a hard stop. From the folded pose the 2 cm square is 'clean' and
+    spends the whole trace a fraction of a degree off shoulder_lift's stop."""
+    pytest.importorskip("placo")
+    pytest.importorskip("rebot_gripette_model")
+    cs = __import__("cartesian_square")
+    from gripette_core.kinematics import CONTROL_FRAME, Kinematics
+    from rebot_gripette.spec import ARM_JOINT_NAMES, REBOT_SPEC, urdf_limits
+
+    kin = Kinematics(REBOT_SPEC)
+    lift = ARM_JOINT_NAMES.index("shoulder_lift")
+    lo = urdf_limits()["shoulder_lift"][0]
+
+    def lift_margin(start_deg):
+        poses, _, problems = cs.solve_square(
+            kin, CONTROL_FRAME, np.deg2rad(start_deg), cs.AXES["x"], 0.02, 10, 15.0)
+        assert not problems, "both start poses are supposed to solve cleanly"
+        return min(np.rad2deg(p[lift]) for p in poses) - lo
+
+    folded = lift_margin([-0.44, 0.07, 4.09, -10.17, 0.53, -0.42])
+    home = lift_margin([0.0, 15.0, 25.0, -10.0, 0.0, 0.0])
+    assert folded < 1.0, f"expected the folded start to hug the stop, got {folded:.2f}"
+    assert home > 10.0, f"expected the home start to keep margin, got {home:.2f}"
+
+
+def test_the_square_returns_the_arm_to_where_it_was_found():
+    """--home_joints moves the arm somewhere it was not. The run has to put it
+    back, including after an aborted trace, or the pose it stopped at silently
+    becomes the next run's start pose - and the teardown's descent only lowers
+    two joints."""
+    src = (EXAMPLES / "cartesian_square.py").read_text()
+    back = src.index('"back"')
+    assert src.index("[back] returning") < back
+    # The return must not be inside the `if ok:` that guards the closure
+    # report, or an abort skips it.
+    assert "Back to where the arm was found, whatever happened" in src
+
+
 def test_the_descent_check_does_not_reach_for_damping():
     """Rung 2.6 used to measure a kd. Damping was measured useless on this arm
     on 2026-10-28; a script still tuning it would imply it was an option. The

@@ -1,8 +1,24 @@
 #!/usr/bin/env python3
 """Rungs 4 and 5. Trace a square with the control frame, via IK.
 
-    uv run python examples/cartesian_square.py --can can0 --size_cm 2    # rung 4
-    uv run python examples/cartesian_square.py --can can0 --size_cm 10   # rung 5
+    uv run python examples/cartesian_square.py --can can0 --size_cm 2 \
+        --home_joints 0 15 25 -10 0 0                             # rung 4
+    uv run python examples/cartesian_square.py --can can0 --size_cm 10 \
+        --home_joints 0 15 25 -10 0 0                             # rung 5
+
+PASS --home_joints. The square's shape is decided entirely by the pose it is
+solved from, and without this the pose is wherever the arm happens to be -
+which after any teardown is folded on its stops. Solved from there the 2 cm
+square reports a clean 0.00 mm residual and 1.2 deg joint steps, and traces the
+whole square with shoulder_lift 0.07 deg from its hard stop; from the home pose
+the same square keeps 15 deg. The solver scores IK residual and joint step and
+says nothing about limit margin, so "clean" does not mean "safe here".
+
+With it, the run is: ramp to the home pose, trace the square from there, ramp
+back to the pose the arm was found in, then the usual teardown. One process
+throughout - handing the arm between two processes would leave it held with
+nothing watching it, and whether the firmware disables on CAN timeout is still
+an open question on this arm.
 
 This is the first rung where the KINEMATICS are in the loop rather than just
 the motors: every waypoint is an IK solve against the exported model. A clean
@@ -114,15 +130,34 @@ def main():
                     help="solve offline and report; touches no hardware")
     ap.add_argument("--from_joints", type=float, nargs=6, metavar="DEG",
                     help="start pose for --dry_run (required with it)")
+    ap.add_argument("--home_joints", type=float, nargs=6, metavar="DEG",
+                    help="ramp here FIRST and trace the square from this pose, "
+                         "then ramp back to where the arm started. Without it "
+                         "the square is solved from wherever the arm is "
+                         "sitting, which on its stops leaves a joint with "
+                         "fractions of a degree of margin.")
     args = ap.parse_args()
 
     from gripette_core.kinematics import CONTROL_FRAME, Kinematics
-    from rebot_gripette.spec import ARM_JOINT_NAMES, REBOT_SPEC
+    from rebot_gripette.spec import (ARM_JOINT_NAMES, REBOT_SPEC,
+                                     check_home_pose)
 
     size_m = args.size_cm / 100.0
     kin = Kinematics(REBOT_SPEC)
 
     # ---- where the square starts from ------------------------------------
+    # Three cases, and the distinction matters because the square's shape is
+    # decided entirely by the pose it is solved from:
+    #   --dry_run        a pose given on the command line, nothing moves
+    #   --home_joints    ramp to that pose first and trace from THERE
+    #   neither          trace from wherever the arm happens to be sitting
+    #
+    # The third is the trap. Solved from the folded start pose the 2 cm square
+    # reports a clean 0.00 mm residual and 1.2 deg steps - and leaves
+    # shoulder_lift 0.07 deg from its hard stop for the whole trace, because
+    # the solver scores residual and joint step and says nothing about limit
+    # margin. From the home pose the same square keeps 15 deg.
+    measured = None
     if args.dry_run:
         if args.from_joints is None:
             print("--dry_run needs --from_joints (the pose to solve from)")
@@ -132,8 +167,25 @@ def main():
         from motorbridge import Controller
         with Controller(args.can) as ctrl:
             handles = {n: ctrl.add_robstride_motor(c, 0xFD, m) for n, c, m in MOTORS}
-            start_motor = require_full_read(cold_read_positions(handles))
-        print_pose("measured start pose (motor deg)", start_motor, urdf_limits())
+            measured = require_full_read(cold_read_positions(handles))
+        print_pose("measured start pose (motor deg)", measured, urdf_limits())
+        start_motor = dict(measured)
+
+    if args.home_joints is not None:
+        if args.dry_run:
+            print("--home_joints is for the hardware path; use --from_joints "
+                  "to choose the pose a dry run solves from")
+            sys.exit(2)
+        try:
+            check_home_pose(np.deg2rad(args.home_joints))
+        except ValueError as e:
+            print(f"--home_joints rejected: {e}")
+            sys.exit(2)
+        start_motor = dict(zip(ARM_JOINT_NAMES, args.home_joints))
+        print(f"\nTracing from the home pose "
+              f"{[round(d, 1) for d in args.home_joints]} deg, not from where "
+              f"the arm is sitting. It will be ramped there first and returned "
+              f"afterwards.")
 
     q_start = np.deg2rad([start_motor[n] for n in ARM_JOINT_NAMES])
 
@@ -179,23 +231,54 @@ def main():
 
         current = held
         ok = True
-        for i, q in enumerate(poses):
-            target = dict(zip(ARM_JOINT_NAMES, np.rad2deg(q)))
-            delta = max(abs(target[n] - current[n]) for n, _, _ in ARM_MOTORS)
-            seg_s = leg_duration(delta, args.deg_per_s)
-            ok = run_leg(robot, current, target, seg_s, f"wp{i:02d}",
-                         sample_s=max(seg_s, 0.5))
-            if not ok:
-                break
-            current = target
+
+        if args.home_joints is not None:
+            home = dict(zip(ARM_JOINT_NAMES, args.home_joints))
+            out_s = leg_duration(
+                max(abs(home[n] - current[n]) for n, _, _ in ARM_MOTORS),
+                args.deg_per_s)
+            print(f"\n[home] ramping to the square's start pose over "
+                  f"{out_s:.1f} s")
+            ok = run_leg(robot, current, home, out_s, "home")
+            if ok:
+                current = home
+
+        if ok:
+            print(f"\n[square] tracing {len(poses)} waypoints")
+            for i, q in enumerate(poses):
+                target = dict(zip(ARM_JOINT_NAMES, np.rad2deg(q)))
+                delta = max(abs(target[n] - current[n]) for n, _, _ in ARM_MOTORS)
+                seg_s = leg_duration(delta, args.deg_per_s)
+                ok = run_leg(robot, current, target, seg_s, f"wp{i:02d}",
+                             sample_s=max(seg_s, 0.5))
+                if not ok:
+                    break
+                current = target
 
         if ok:
             end = motor_pose(robot)
-            print("\nclosure error vs the start pose (motor deg):")
+            print("\nclosure error vs the pose the square started from "
+                  "(motor deg):")
             for name, _, _ in ARM_MOTORS:
-                print(f"  {name:<15}{end[name] - held[name]:+8.3f}")
+                print(f"  {name:<15}{end[name] - start_motor[name]:+8.3f}")
             print("\nIf the square was not visually clean, STOP here. "
                   "A policy on an arm that cannot trace a square fails silently.")
+
+        # Back to where the arm was found, whatever happened to the square.
+        # An abort leaves it part-way round, and the teardown's descent only
+        # lowers two joints - it would leave the others wherever the trace
+        # stopped, which quietly becomes the next run's start pose.
+        if args.home_joints is not None:
+            back_s = leg_duration(
+                max(abs(measured[n] - current[n]) for n, _, _ in ARM_MOTORS),
+                args.deg_per_s)
+            print(f"\n[back] returning to the measured start pose over "
+                  f"{back_s:.1f} s")
+            if run_leg(robot, motor_pose(robot), measured, back_s, "back"):
+                end = motor_pose(robot)
+                print("\nreturn accuracy vs start (motor deg):")
+                for name, _, _ in ARM_MOTORS:
+                    print(f"  {name:<15}{end[name] - measured[name]:+8.3f}")
     finally:
         disconnect_follower(robot)
         print("ABORTED - the arm stopped where it was." if not ok else "Done.")
