@@ -32,9 +32,11 @@ import numpy as np
 from gripette_core.arm_service import ArmServicer
 from gripette_core.kinematics import CONTROL_FRAME, Kinematics
 from gripette_core.proto import arm_pb2_grpc, gripper_pb2_grpc
+from gripette_sim.clearance import GeomClearance
 from gripette_sim.gripper_service import GripperServicer
 from rebot_gripette.spec import REBOT_SPEC
 
+from .obstacles import GUARDED_BODIES, OBSTACLE_GEOMS, TABLE_MARGIN
 from .sim_arm_interface import SimArmInterface
 from .simulation import Simulation
 
@@ -79,6 +81,13 @@ class SimulationServer:
         self._sim.reset_joints(np.zeros(2), joint_names=["proximal", "distal"])
         logger.info("Gripper initialized to OPEN (proximal=0, distal=0)")
 
+        # Clearance gate against the bench. The IK-jump watchdog catches the
+        # solver flipping branch; this catches a solution that is perfectly
+        # smooth and goes straight into the table.
+        self._clearance = GeomClearance(
+            self._sim.model, OBSTACLE_GEOMS, GUARDED_BODIES,
+            list(REBOT_SPEC.joint_names), margin=TABLE_MARGIN)
+
         self._camera_frame = self._sim.render_camera(out_size=CAMERA_OUT_SIZE)
 
     def get_camera_frame(self):
@@ -99,6 +108,11 @@ class SimulationServer:
             kin=self._kin,
             home_joints=self._home_joints,
             start_time=self._start_time,
+            # `current_joints` lets the gate allow moves that RETREAT from the
+            # table even when they start inside the margin; without it an arm
+            # that got in there would have no command left that could get out.
+            joint_gate=self._clearance.as_joint_gate(
+                current_joints=self._arm_iface.get_positions),
         )
         self._arm_server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
         arm_pb2_grpc.add_ArmServiceServicer_to_server(

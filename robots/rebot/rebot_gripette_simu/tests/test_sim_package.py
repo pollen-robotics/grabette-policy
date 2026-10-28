@@ -216,3 +216,91 @@ def test_the_simulated_base_cannot_move():
     base = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "axis_1")
     assert model.body_dofnum[base] == 0, (
         "the robot's root body has degrees of freedom - it is not bolted down")
+
+
+# --------------------------------------------------------------------------- #
+# The clearance gate
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture(scope="module")
+def clearance():
+    from gripette_sim.clearance import GeomClearance
+    from gripette_sim.simulation import _load_model
+    from rebot_gripette.spec import REBOT_SPEC
+    from rebot_gripette_simu.obstacles import (GUARDED_BODIES, OBSTACLE_GEOMS,
+                                               TABLE_MARGIN)
+    from rebot_gripette_simu.server import DEFAULT_SCENE
+
+    model = _load_model(DEFAULT_SCENE)
+    return GeomClearance(model, OBSTACLE_GEOMS, GUARDED_BODIES,
+                         list(REBOT_SPEC.joint_names), margin=TABLE_MARGIN)
+
+
+def test_the_gate_is_actually_armed(clearance):
+    """A gate that silently found no geoms would pass every other test here
+    while guarding nothing."""
+    assert clearance.enabled
+    assert clearance.obstacle_gids and clearance.arm_gids
+
+
+def test_a_pose_driving_into_the_table_is_blocked(clearance):
+    """The failure this exists to prevent: an IK solution that is perfectly
+    smooth - no branch flip for the watchdog to catch - and goes through the
+    bench."""
+    gate = clearance.as_joint_gate()
+    into_table = np.deg2rad([0, 60, 20, -60, 0, 0])
+    assert clearance.clearance(into_table) < 0, "expected penetration"
+    assert gate(into_table) is not None
+
+
+def test_the_resting_pose_is_allowed(clearance):
+    """The arm sits folded on its lower stops at power-on, bolted to this very
+    table. A gate that fires there would fire forever and block the first
+    command of every run - which is why the base links are not guarded."""
+    gate = clearance.as_joint_gate()
+    assert gate(np.deg2rad([0, 0, 0, 0, 0, 0])) is None
+
+
+def test_the_home_pose_is_allowed(clearance):
+    gate = clearance.as_joint_gate()
+    assert gate(np.deg2rad([0, 15, 25, -10, 0, 0])) is None
+
+
+def test_retreating_from_inside_the_margin_is_always_allowed(clearance):
+    """Without this an arm that got inside the margin is deadlocked: every
+    command that could free it is also a command inside the margin, so the
+    gate refuses them all and the only way out is to kill the server."""
+    stuck = np.deg2rad([0, 90, 10, -80, 0, 0])
+    assert 0 < clearance.clearance(stuck) < clearance.margin, "fixture pose moved"
+
+    gate = clearance.as_joint_gate(current_joints=lambda: stuck)
+    retreat = np.deg2rad([0, 90, 40, -80, 0, 0])      # elbow up, away from it
+    assert clearance.clearance(retreat) > clearance.clearance(stuck)
+    assert gate(retreat) is None
+
+    deeper = np.deg2rad([0, 90, 10, -85, 0, 0])
+    assert gate(deeper) is not None, "going deeper must still be refused"
+
+
+def test_the_inner_links_are_deliberately_unguarded():
+    """They are in permanent contact: the arm is BOLTED to this surface. Named
+    explicitly so adding them back is a decision, not an accident."""
+    from rebot_gripette_simu.obstacles import GUARDED_BODIES
+
+    for base_link in ("axis_1", "axis_2", "axis_3"):
+        assert base_link not in GUARDED_BODIES
+
+
+def test_the_servicer_takes_the_gate_and_rolls_back_on_a_veto():
+    """The gate must reject with the same integrator rollback as the IK-jump
+    watchdog. A veto that left the delta in the integrator would have the
+    target march into the table while every command was being refused."""
+    import inspect
+
+    from gripette_core import arm_service
+
+    assert "joint_gate" in inspect.signature(arm_service.ArmServicer).parameters
+    src = inspect.getsource(arm_service.ArmServicer.SendCartesianDelta)
+    gate_at = src.index("self._joint_gate(target_joints)")
+    rollback = src.index("self._target_pos -= delta_pos_world", gate_at)
+    assert rollback > gate_at

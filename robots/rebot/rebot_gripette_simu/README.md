@@ -83,11 +83,48 @@ the follower's `mit_kp`. Nothing depends on it yet, but a policy trained here
 would see tracking the hardware does not reproduce, so this is the first thing
 to reconcile before any dataset is recorded in sim.
 
-## Known gap: no collision gate
+## The clearance gate
 
-The OpenArm's `arm_servicer` rejects any configuration bringing a guarded link
-within 2 cm of its mounting column. That gate lives in the OpenArm sim package,
-not in the shared service, and the reBot has no pedestal geometry modelled, so
-**the reBot currently has IK-jump protection but no clearance gate**. The jump
-watchdog catches a branch flip; nothing yet catches the arm reaching into its
-own table.
+Two different failures, two different guards:
+
+| guard | catches | where |
+|---|---|---|
+| IK-jump watchdog | the solver flipping branch — a 90° step in one tick | `gripette_core.arm_service`, 15° |
+| clearance gate | a perfectly smooth solution that goes **into the bench** | `gripette_sim.clearance`, 2 cm |
+
+The watchdog would not have caught the second: driving into the table is a
+sequence of small, well-conditioned IK solutions.
+
+`ArmServicer` takes a `joint_gate` — a plain callable from joint angles to a
+reason-or-`None`, vetoing a solution before it is commanded, with the same
+integrator rollback a jump gets. It is a callable rather than geometry because
+`gripette-core` must not import mujoco; `gripette_sim.clearance` supplies the
+MuJoCo-backed implementation, and the hook is on the **shared** service, so the
+real arm can be given one too.
+
+`obstacles.py` declares what is guarded. Measured by sweeping the joint
+envelope and recording each link's closest approach to the tabletop:
+
+| link | closest approach |
+|---|---|
+| `实体1` (gripper mount) | **−69.2 mm** |
+| `axis_5` / `axis_4` | −62.5 / −61.6 mm |
+| `axis_6` | −48.9 mm |
+| gripette distal / proximal | −44.8 / −44.4 mm |
+| `axis_1` / `2` / `3` | 0.0 mm — permanent contact |
+
+The last row is why the base links are **not** guarded: the arm is bolted to
+this surface, so they touch it by construction and at the folded resting pose.
+Guarding them would fire the gate in the pose the arm powers on in and never
+clear it.
+
+**Retreating is always allowed.** Without that, an arm that ends up inside the
+margin is deadlocked — every command that could free it is also a command
+inside the margin, so the gate refuses them all and the only way out is killing
+the server, which is the state this exists to avoid.
+
+### Still not guarded
+
+The table legs (nothing reaches them without hitting the top first), anything
+held in the gripper, and general self-collision. The gate checks the named
+obstacles against the named links, nothing else.

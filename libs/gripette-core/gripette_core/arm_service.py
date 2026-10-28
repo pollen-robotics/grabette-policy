@@ -13,7 +13,9 @@ An arm supplies two things:
   * a `Kinematics` bound to its `ArmSpec` (which carries the joint names and
     therefore the joint COUNT: 7 on the OpenArm, 6 on the reBot).
 
-plus its own home pose. Everything else is common.
+plus its own home pose, and optionally a `joint_gate` - a callable that can
+veto an IK solution before it is commanded, which is how an arm declares the
+obstacles it must not drive into. Everything else is common.
 
 Deliberately free of placo and mujoco at import time: `Kinematics` is only
 referenced as a type annotation, so a client can import the servicer without
@@ -96,9 +98,14 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         max_ik_jump_deg: float = 15.0,
         max_ik_jump_violations: int = 2,
         max_target_lead_mm: float = 50.0,
+        joint_gate=None,
     ):
         self._arm = arm
         self._kin = kin
+        # Optional veto on an IK solution: f(joint_angles_rad) -> reason | None.
+        # A reason string rejects the command; None accepts it. See the call
+        # site in SendCartesianDelta for why it is a callable and not geometry.
+        self._joint_gate = joint_gate
         self._home_joints = np.asarray(home_joints, dtype=np.float64)
         self._start_time = start_time
         if len(self._home_joints) != len(kin.joint_names):
@@ -361,6 +368,26 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
                         )
                     # Healthy step — reset the consecutive-violation counter.
                     self._ik_jump_violations = 0
+
+                # Joint gate: an arm-supplied veto on the solution itself,
+                # rejected with the same rollback as a jump. The IK-jump
+                # watchdog asks "did the solver flip branch?"; this asks "is
+                # the place it wants to go allowed?" — which is where a
+                # clearance check against a table, a pedestal or a fixture
+                # belongs. Kept as a plain callable so the obstacle geometry
+                # (MuJoCo) stays out of this package, which the real-hardware
+                # drivers import; see gripette_sim.clearance for the
+                # implementation that supplies one.
+                if self._joint_gate is not None:
+                    reason = self._joint_gate(target_joints)
+                    if reason:
+                        logger.error(
+                            f"joint gate rejected the command: {reason}. "
+                            f"Integrator NOT updated.")
+                        self._target_pos -= delta_pos_world
+                        self._target_r6d = rotation_matrix_to_6d(R_target).copy()
+                        return arm_pb2.ArmCommandResponse(
+                            success=False, error=f"blocked: {reason}")
 
                 # Re-sync the integrator to what the accepted solution ACTUALLY
                 # achieves (the class docstring always promised this; it was
