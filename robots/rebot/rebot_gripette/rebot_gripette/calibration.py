@@ -37,12 +37,20 @@ from pathlib import Path
 from lerobot_robot_seeed_b601 import SeeedB601RSFollower
 
 from rebot_gripette.follower import ReBotFollowerConfig
+from rebot_gripette.spec import urdf_limits
 
-# The URDF models 0..180 for elbow_flex while the plugin config permits 0..200.
-# Those extra 20 degrees are outside the dynamics model and any IK built on it.
-URDF_LIMITS = {"shoulder_pan": (-160, 160), "shoulder_lift": (0, 180),
-               "elbow_flex": (0, 180), "wrist_flex": (-90, 90),
-               "wrist_yaw": (-90, 90), "wrist_roll": (-180, 180)}
+# The limits used to be transcribed into a table here, and the table was wrong
+# on five of six joints: it claimed pan +/-160, shoulder_lift 0..180, elbow
+# 0..180 and roll +/-180, against an actual +/-145, 0..170, 0..200 and +/-130.
+# Wrong in the quiet direction too - a table that OVERSTATES the model's travel
+# is a warning below that never fires for the joints it was written to catch.
+# spec.urdf_limits() reads the model instead, so it cannot drift from it.
+#
+# The URDF stores radians, so its degrees come back as -79.99999... rather than
+# -80. Comparing a round config limit against that fires on the last bit of a
+# float. The warning is about travel the dynamics model does not cover, and a
+# hundredth of a degree is not that.
+LIMIT_TOLERANCE_DEG = 0.01
 
 
 def calibration_ranges(config):
@@ -95,9 +103,10 @@ def fix_calibration_file(path, config=None, backup=True):
     path.write_text(json.dumps(data, indent=4) + "\n")
     print(f"\nwritten: {path}")
 
+    limits = urdf_limits()
     for name, (lo, hi) in config.joint_limits.items():
-        u = URDF_LIMITS.get(name)
-        if u and (lo < u[0] or hi > u[1]):
+        u = limits.get(name)
+        if u and (lo < u[0] - LIMIT_TOLERANCE_DEG or hi > u[1] + LIMIT_TOLERANCE_DEG):
             print(f"WARNING  {name}: config permits {lo:g}..{hi:g} but the URDF "
                   f"models only {u[0]:g}..{u[1]:g} - outside the dynamics model")
     return data

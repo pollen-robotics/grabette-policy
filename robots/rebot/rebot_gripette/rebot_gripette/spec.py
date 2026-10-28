@@ -69,6 +69,33 @@ HOME_JOINTS_RAD = None
 HOME_LIMIT_MARGIN_DEG = 5.0
 
 
+def urdf_limits():
+    """{joint: (lower_deg, upper_deg)} read from the exported model's URDF.
+
+    The single source for this arm's travel. It is read from the XML every time
+    rather than transcribed into a table, because a transcribed table is a
+    second copy that silently stops matching the model it claims to describe -
+    which is exactly what calibration.URDF_LIMITS did: it was wrong on five of
+    six joints, and wrong in the direction that keeps its warning quiet.
+
+    Read straight from the XML rather than through placo, so callers that want
+    limits do not have to load a kinematics solver.
+    """
+    import math
+    import xml.etree.ElementTree as ET
+
+    from rebot_gripette_model import REBOT_B601RS_URDF
+
+    root = ET.parse(REBOT_B601RS_URDF).getroot()
+    out = {}
+    for j in root.findall("joint"):
+        lim = j.find("limit")
+        if lim is not None and lim.get("lower") is not None:
+            out[j.get("name")] = (math.degrees(float(lim.get("lower"))),
+                                  math.degrees(float(lim.get("upper"))))
+    return out
+
+
 def check_home_pose(joints_rad, margin_deg: float = HOME_LIMIT_MARGIN_DEG):
     """Raise unless `joints_rad` is a usable home pose for this arm.
 
@@ -83,24 +110,13 @@ def check_home_pose(joints_rad, margin_deg: float = HOME_LIMIT_MARGIN_DEG):
         LOWER limit for both shoulder_lift and elbow_flex, so an all-zeros
         pose is literally on two hard stops and is rejected here.
     """
-    import math
-    import xml.etree.ElementTree as ET
-
-    from rebot_gripette_model import REBOT_B601RS_URDF
-
     q = np.asarray(joints_rad, dtype=float)
     if q.shape != (len(ARM_JOINT_NAMES),):
         raise ValueError(
             f"home pose has {q.size} joints, expected {len(ARM_JOINT_NAMES)} "
             f"({', '.join(ARM_JOINT_NAMES)})")
 
-    root = ET.parse(REBOT_B601RS_URDF).getroot()
-    limits = {}
-    for j in root.findall("joint"):
-        lim = j.find("limit")
-        if lim is not None and lim.get("lower") is not None:
-            limits[j.get("name")] = (math.degrees(float(lim.get("lower"))),
-                                     math.degrees(float(lim.get("upper"))))
+    limits = urdf_limits()
 
     problems = []
     for name, deg in zip(ARM_JOINT_NAMES, np.rad2deg(q)):

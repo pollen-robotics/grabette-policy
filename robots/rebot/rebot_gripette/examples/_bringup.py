@@ -76,21 +76,12 @@ MIN_LEG_S = 2.0
 def urdf_limits():
     """{joint: (lower_deg, upper_deg)} from the exported model's URDF.
 
-    Read straight from the XML rather than through placo, so the limits are
-    available in scripts that do not load a kinematics solver.
+    Re-exported from rebot_gripette.spec so the examples and the package read
+    the SAME limits. They were separate copies until a third copy - a hardcoded
+    table in calibration.py - was found to be wrong on five of six joints.
     """
-    import xml.etree.ElementTree as ET
-
-    from rebot_gripette_model import REBOT_B601RS_URDF
-
-    root = ET.parse(REBOT_B601RS_URDF).getroot()
-    out = {}
-    for j in root.findall("joint"):
-        lim = j.find("limit")
-        if lim is not None and lim.get("lower") is not None:
-            out[j.get("name")] = (math.degrees(float(lim.get("lower"))),
-                                  math.degrees(float(lim.get("upper"))))
-    return out
+    from rebot_gripette.spec import urdf_limits as _limits
+    return _limits()
 
 
 def leg_duration(max_delta_deg, deg_per_s=DEG_PER_S):

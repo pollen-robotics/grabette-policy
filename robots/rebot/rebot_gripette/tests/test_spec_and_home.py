@@ -69,6 +69,54 @@ def test_the_gripette_fingers_are_masked():
 
 
 # --------------------------------------------------------------------------- #
+# Joint limits: one source, and it is the model
+# --------------------------------------------------------------------------- #
+
+def test_published_limits_are_the_models_limits():
+    """spec.urdf_limits() is what calibration, the examples and check_home_pose
+    all read. Compared here against an independent parse of the same file, so
+    the check does not just re-run the implementation."""
+    from rebot_gripette.spec import urdf_limits
+
+    published = urdf_limits()
+    for name, (lo, hi) in _urdf_limits().items():
+        assert published[name] == (pytest.approx(lo), pytest.approx(hi))
+
+
+def test_every_arm_joint_has_a_limit():
+    """A joint missing from the table reads as unconstrained - check_home_pose
+    would KeyError, and the calibration warning would silently skip it."""
+    from rebot_gripette.spec import urdf_limits
+
+    limits = urdf_limits()
+    for name in ARM_JOINT_NAMES:
+        assert name in limits, f"{name} has no URDF limit"
+
+
+def test_the_limits_are_not_transcribed_anywhere():
+    """calibration.py used to carry its own copy, wrong on five of six joints
+    and wrong in the direction that kept its warning quiet. A transcribed table
+    is a second source that stops matching the model without saying so."""
+    import pathlib
+
+    pkg = pathlib.Path(__file__).resolve().parents[1] / "rebot_gripette"
+    src = (pkg / "calibration.py").read_text()
+    assert "URDF_LIMITS = {" not in src
+
+
+def test_the_real_limits_are_what_the_stale_table_claimed_they_were_not():
+    """Pins the four joints the old table got wrong, so a regression to those
+    values fails here rather than on the arm."""
+    from rebot_gripette.spec import urdf_limits
+
+    limits = urdf_limits()
+    assert limits["shoulder_pan"][1] == pytest.approx(145.0, abs=1.0)
+    assert limits["shoulder_lift"][1] == pytest.approx(170.0, abs=1.0)
+    assert limits["elbow_flex"][1] == pytest.approx(200.0, abs=1.0)
+    assert limits["wrist_roll"][1] == pytest.approx(130.0, abs=1.0)
+
+
+# --------------------------------------------------------------------------- #
 # There must be no invented default
 # --------------------------------------------------------------------------- #
 

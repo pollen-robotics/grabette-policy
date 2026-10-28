@@ -91,6 +91,38 @@ def test_fix_calibration_file_rewrites_ranges_and_keeps_the_zero(tmp_path, confi
         assert written[joint]["drive_mode"] == 0
 
 
+def test_the_urdf_warning_is_quiet_for_the_shipped_config(tmp_path, config, capsys):
+    """Our config's joint_limits ARE the model's, so nothing should warn. The
+    URDF stores radians, so its degrees come back as -79.99999... - without a
+    tolerance every joint would warn about two ten-thousandths of a degree and
+    the warning would be noise nobody reads."""
+    path = tmp_path / "rebot1.json"
+    path.write_text(json.dumps(
+        {joint: {"id": i + 1, "drive_mode": 0, "homing_offset": 0,
+                 "range_min": -90, "range_max": 90}
+         for i, joint in enumerate(EXPECTED_RANGES)}, indent=4))
+
+    fix_calibration_file(path, config=config, backup=False)
+    assert "WARNING" not in capsys.readouterr().out
+
+
+def test_the_urdf_warning_still_fires_for_real_overtravel(tmp_path, config, capsys):
+    """The tolerance must not silence the thing the warning is for: a config
+    that permits travel the dynamics model does not cover."""
+    path = tmp_path / "rebot1.json"
+    path.write_text(json.dumps(
+        {joint: {"id": i + 1, "drive_mode": 0, "homing_offset": 0,
+                 "range_min": -90, "range_max": 90}
+         for i, joint in enumerate(EXPECTED_RANGES)}, indent=4))
+
+    lo, hi = config.joint_limits["wrist_roll"]
+    config.joint_limits["wrist_roll"] = (lo, hi + 30.0)
+    fix_calibration_file(path, config=config, backup=False)
+
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "wrist_roll" in out
+
+
 def test_fix_calibration_file_backs_up_once(tmp_path, config):
     path = tmp_path / "rebot1.json"
     path.write_text(json.dumps({"elbow_flex": {"range_min": -90, "range_max": 90}}))
