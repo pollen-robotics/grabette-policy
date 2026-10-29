@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import torch
 from lerobot.processor import DataProcessorPipeline, ProcessorStepRegistry
-from lerobot.types import TransitionKey
+from grabette_chunkrel._lerobot_types import TransitionKey
 
 from grabette_chunkrel.chunk_relative_processor import (
     INVERSE_STEP_NAME,

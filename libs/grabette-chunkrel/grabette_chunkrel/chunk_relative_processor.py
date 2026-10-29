@@ -29,7 +29,7 @@ import numpy as np
 import torch
 from lerobot.configs import PipelineFeatureType, PolicyFeature
 from lerobot.processor import ProcessorStep, ProcessorStepRegistry
-from lerobot.types import EnvTransition, TransitionKey
+from grabette_chunkrel._lerobot_types import EnvTransition, TransitionKey
 
 from grabette_chunkrel.chunk_relative import (
     DEFAULT_JUMP_CAP_DEG,
