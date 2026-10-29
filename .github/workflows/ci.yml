@@ -5,6 +5,9 @@ on:
     branches: [develop, main]
   pull_request:
 
+env:
+  PYTHON_VERSION: "3.12"
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -26,6 +29,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Lock is up to date
         run: uv lock --check
@@ -91,6 +96,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
       - name: Build a lerobot venv (CPU torch)
         # CPU-only torch via `uv pip install --torch-backend=cpu` (~200 MB); a
         # plain workspace sync installs the CUDA wheel (~2.5 GB) — the tests use
@@ -99,7 +106,7 @@ jobs:
         run: |
           SPEC=$(grep -oE "lerobot\[[a-z,]*\](==[0-9.]+|>=[0-9.]+,<[0-9.]+)" libs/grabette-dataset-tools/pyproject.toml | head -1)
           echo "Testing against: $SPEC"
-          uv venv .venv-lerobot --python 3.12
+          uv venv .venv-lerobot
           VIRTUAL_ENV=.venv-lerobot uv pip install --torch-backend=cpu "$SPEC" pytest pandas scipy
 
       - name: Attention-diagnostics unit tests
