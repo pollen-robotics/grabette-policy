@@ -10,7 +10,7 @@ dependencies = [
     # [training] carries the dataset stack plus accelerate/wandb required by
     # the documented lerobot-train and cloud-logging paths. [diffusion]
     # carries diffusers, required at policy construction.
-    "lerobot[training,diffusion]==0.6.0",
+    "lerobot[training,diffusion]>=0.6.0,<0.7.0",
     "scipy>=1.10",
     "matplotlib>=3.7",  # offline_eval.py overlay plots
     # numpy / torch / pyarrow come transitively with lerobot.
