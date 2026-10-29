@@ -182,13 +182,8 @@ def _drop_stale_action_stats(dst_root: Path) -> None:
     stale marker would make that guard PASS.
 
     `action_absolute` goes for the same reason: it archives the pre-relative
-    stats of a different representation. lerobot's `meta/relative_action.json`
-    marker is the same provenance in its current form.
+    stats of a different representation.
     """
-    marker = dst_root / "meta" / "relative_action.json"
-    if marker.is_file():
-        marker.unlink()
-        logger.info("Dropped stale %s", marker)
     path = dst_root / "meta" / "stats.json"
     if not path.is_file():
         return

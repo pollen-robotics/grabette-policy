@@ -240,12 +240,10 @@ def test_stale_relative_stats_provenance_is_dropped(tmp_path):
         "action_relative_meta": {"chunk_size": 50},
         "observation.state": {"min": [0.0], "max": [1.0]},
     }))
-    (root / "meta" / "relative_action.json").write_text(json.dumps({"mode": "pose"}))
 
     _drop_stale_action_stats(root)
 
     st = json.loads((root / "meta" / "stats.json").read_text())
-    assert not (root / "meta" / "relative_action.json").exists()
     assert "action_relative_meta" not in st
     assert "action_absolute" not in st
     assert "action" in st and "observation.state" in st, "unrelated keys must survive"
