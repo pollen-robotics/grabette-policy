@@ -23,10 +23,33 @@
   shared episode code looks up, and renaming them here would only make this
   scene the odd one out.
 
-  PLACEMENT: standing on the bench at x -0.30, under the home-pose gripper and
-  at the middle of the table. At the home pose 0 15 25 -10 0 0 the gripper
-  centre is at x -224 mm, z +318 mm, so the can (top at z +120 mm) sits 200 mm
-  below and 76 mm further out - an approach, not a pose the arm starts inside.
+  PLACEMENT: x -0.60, chosen for THIS arm's kinematics rather than copied from
+  the OpenArm's layout. The OpenArm is torso-mounted and human-like: shoulder
+  above the work, arm hanging down, reaching a table 40 cm BELOW its base. The
+  reBot is a desktop arm bolted to the bench - shoulder at the work surface,
+  rest posture horizontal with the elbow folded - so the distance that suits it
+  is not the same distance. Scoring the generator's start distribution against
+  reBot IK, with the arm required to clear the bench (60 starts x 18
+  arrangement yaws per position):
+
+      can x   reach   clears 20mm   manipulability   shoulder_lift / elbow_flex
+      -0.30     68%        37%            0.0018          87 deg /  22 deg
+      -0.40     77%        43%            0.0028         102 deg /  22 deg
+      -0.50     85%        47%            0.0050         119 deg /  56 deg
+      -0.60     95%        52%            0.0111         134 deg /  78 deg
+      -0.70    100%        57%            0.0146         152 deg / 109 deg
+
+  At -0.30 the arm has to stand up and reach down at a can beneath itself - the
+  torso-mounted posture, and the worst-conditioned pose in the range. -0.70
+  scores best but lands on the slab's edge with nothing in reserve. -0.60 gives
+  a leaning, folded-elbow posture, 6x the manipulability of -0.30, and still
+  150 mm of bench beyond the can.
+
+  BENCH EXTENT is part of the observation, not just scenery. The policy trained
+  on a 300 x 300 mm table floating in a checkerboard void; this bench is what
+  fills the lower half of its view. Narrowed to 360 mm across and ending 150 mm
+  past the can so the frame holds a comparable patch of table against the same
+  background. The arm end still reaches x +0.10 - it has to carry the arm.
 
   <option>/<default> are the OpenArm grasp scene's, for the same reason it has
   them: the default contact model lets a gripped cylinder slide out of the
@@ -72,23 +95,26 @@
             material="groundplane" />
 
         <!-- The bench. Static geoms (no body joint): the table does not move,
-             and the arm is bolted to it. The 10 cm slab MATCHES
+             and the arm is bolted to it. The 10 cm slab THICKNESS matches
              rebot_b601rs/bench.xml, the bare model the real server measures
-             its clearance gate against - same thickness, same verdicts. -->
-        <geom name="tabletop" type="box" size="0.40 0.35 0.05" pos="-0.30 0 -0.05"
+             its clearance gate against - same thickness, same verdicts. The
+             EXTENT is this scene's own (see BENCH EXTENT above): x -0.75..0.10
+             to end 150 mm past the can, y +/-0.18 so the frame holds about as
+             much table as the training view did. -->
+        <geom name="tabletop" type="box" size="0.425 0.18 0.05" pos="-0.325 0 -0.05"
             material="wood" />
-        <geom name="leg_1" type="box" size="0.02 0.02 0.315" pos="0.06 0.31 -0.415"
+        <geom name="leg_1" type="box" size="0.02 0.02 0.315" pos="0.06 0.14 -0.415"
             material="wood" />
-        <geom name="leg_2" type="box" size="0.02 0.02 0.315" pos="-0.66 0.31 -0.415"
+        <geom name="leg_2" type="box" size="0.02 0.02 0.315" pos="-0.71 0.14 -0.415"
             material="wood" />
-        <geom name="leg_3" type="box" size="0.02 0.02 0.315" pos="0.06 -0.31 -0.415"
+        <geom name="leg_3" type="box" size="0.02 0.02 0.315" pos="0.06 -0.14 -0.415"
             material="wood" />
-        <geom name="leg_4" type="box" size="0.02 0.02 0.315" pos="-0.66 -0.31 -0.415"
+        <geom name="leg_4" type="box" size="0.02 0.02 0.315" pos="-0.71 -0.14 -0.415"
             material="wood" />
 
         <!-- The can: Ø50 x 120 mm standing on the bench, so its centre is at
              half-height above z=0. -->
-        <body name="red_cube" pos="-0.30 0 0.06">
+        <body name="red_cube" pos="-0.60 0 0.06">
             <freejoint name="red_cube_joint" />
             <geom name="red_cube" type="cylinder" size="0.025 0.06"
                 material="red_cube" mass="0.1"
