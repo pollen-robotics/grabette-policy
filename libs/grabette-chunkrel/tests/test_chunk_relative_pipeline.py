@@ -32,7 +32,7 @@ from lerobot.processor import (  # noqa: E402
     NormalizerProcessorStep,
     RenameObservationsProcessorStep,
 )
-from grabette_chunkrel._lerobot_types import TransitionKey  # noqa: E402
+from lerobot.lerobot_types import TransitionKey  # noqa: E402
 
 K, B, ADIM, SDIM = 50, 2, 8, 2
 

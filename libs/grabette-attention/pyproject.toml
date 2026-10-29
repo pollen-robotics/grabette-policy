@@ -25,7 +25,7 @@ rerun = ["rerun-sdk"]
 # but not installed" the moment loader.load_pi05() is exercised for real,
 # which is what tests/test_integration_gpu.py does.
 # opencv-python-headless is needed so cv2-gated tests run on all supported Python versions.
-test = ["pytest", "torch", "matplotlib", "opencv-python-headless", "lerobot[pi]>=0.6.0,<0.7.0 ; python_version >= '3.12'"]
+test = ["pytest", "torch", "matplotlib", "opencv-python-headless", "lerobot[pi]>=0.6.1,<0.7.0 ; python_version >= '3.12'"]
 
 [project.scripts]
 grabette-attn = "grabette_attention.cli:main"

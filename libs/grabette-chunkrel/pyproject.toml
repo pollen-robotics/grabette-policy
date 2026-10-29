@@ -8,7 +8,7 @@ requires-python = ">=3.11"
 # provide torch and lerobot — the HF Jobs training container, the Ficelle
 # inference server, the eval loop — and it must not fight them for a version.
 #
-# `grabette-dataset-tools` allows `lerobot[dataset]>=0.6.0,<0.7` while the pi05
+# `grabette-dataset-tools` allows `lerobot[dataset]>=0.6.1,<0.7` while the pi05
 # training script pins `lerobot @ git+...@<rev>`; declaring lerobot here would
 # reproduce that URL-vs-version conflict inside the job, i.e. after the GPU has
 # already booted. So lerobot and torch are treated as HOST-PROVIDED: imported by
@@ -21,7 +21,7 @@ dependencies = ["numpy", "scipy"]
 # lerobot carries the same `>= 3.12` marker as everywhere else in the workspace:
 # it declares Python>=3.12, and an unguarded pin here makes `uv lock` fail for
 # the whole workspace on the 3.11 split.
-test = ["pytest", "torch", "lerobot>=0.6.0,<0.7.0 ; python_version >= '3.12'"]
+test = ["pytest", "torch", "lerobot>=0.6.1,<0.7.0 ; python_version >= '3.12'"]
 
 [build-system]
 requires = ["hatchling"]
