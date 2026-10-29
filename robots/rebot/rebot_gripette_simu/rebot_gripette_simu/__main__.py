@@ -39,6 +39,18 @@ def main():
     p.add_argument("--gripper_port", type=int, default=GRIPPER_PORT)
     p.add_argument("--arm_port", type=int, default=ARM_PORT)
     p.add_argument("--headless", action="store_true", help="run without a viewer")
+    p.add_argument("--clearance_margin_mm", type=float, default=None,
+                   metavar="MM",
+                   help="how close a guarded link may come to the bench before "
+                        "the gate refuses a command. The default is a REACHING "
+                        "figure; a GRASP needs less, since picking an object "
+                        "off the bench puts the fingertips millimetres from it. "
+                        "Same flag the real server takes.")
+    p.add_argument("--no_clearance_gate", action="store_true",
+                   help="turn the bench guard OFF. Only for working around the "
+                        "distance query returning a false 0.0 for some geoms, "
+                        "which pins the gate and refuses every command; see "
+                        "server.py. There is no such flag on the real server.")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO,
@@ -53,7 +65,13 @@ def main():
         print(f"--home_joints rejected: {e}")
         sys.exit(2)
 
-    server = SimulationServer(home_joints_rad=home_rad, scene_xml=args.scene)
+    kwargs = {}
+    if args.clearance_margin_mm is not None:
+        kwargs["clearance_margin_m"] = args.clearance_margin_mm / 1000.0
+    if args.no_clearance_gate:
+        kwargs["clearance_gate"] = False
+    server = SimulationServer(home_joints_rad=home_rad, scene_xml=args.scene,
+                              **kwargs)
     server.run(gripper_port=args.gripper_port, arm_port=args.arm_port,
                headless=args.headless)
 

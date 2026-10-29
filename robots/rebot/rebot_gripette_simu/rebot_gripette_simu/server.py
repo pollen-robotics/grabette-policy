@@ -57,7 +57,8 @@ DEFAULT_SCENE = Path(__file__).resolve().parents[1] / "scenes" / "table.xml"
 class SimulationServer:
     """MuJoCo simulation of the reBot, with the Gripette and arm gRPC services."""
 
-    def __init__(self, home_joints_rad, scene_xml=None, orientation_weight=10.0):
+    def __init__(self, home_joints_rad, scene_xml=None, orientation_weight=10.0,
+                 clearance_margin_m=TABLE_MARGIN, clearance_gate=True):
         self._sim = Simulation(scene_xml or DEFAULT_SCENE)
         self._kin = Kinematics(REBOT_SPEC, orientation_weight=orientation_weight)
         self._lock = threading.Lock()
@@ -85,9 +86,34 @@ class SimulationServer:
         # Clearance gate against the bench. The IK-jump watchdog catches the
         # solver flipping branch; this catches a solution that is perfectly
         # smooth and goes straight into the table.
+        #
+        # The margin is settable because the default is a REACHING figure, and
+        # a grasp is not a reach: picking an object off the bench puts the
+        # fingertips within millimetres of the surface by definition. At the
+        # 20 mm default a grasp policy had 176 of 200 commands vetoed, the
+        # closest at -6.7 mm. Lower it for a pick task, with the obvious cost -
+        # the gate is what stops a bad solution driving into the table, so a
+        # smaller number buys the policy room and spends the guard's authority.
+        # Same knob the real server exposes as --clearance_margin_mm.
+        #
+        # The gate can also be turned OFF here, which the real server must
+        # never allow. `mj_geomDistance` returns a hard 0.0 for a few of this
+        # model's collision geoms that are plainly 100-370 mm clear - measured
+        # per geom, and the same pair answers correctly in a two-geom model, so
+        # it is neither the hulls (capping maxhullvert does not fix it) nor the
+        # collision mask (the OpenArm's contype/conaffinity does not either).
+        # Because the gate takes a min over every pair, ONE such reading pins
+        # it to 0.0 and every command is refused: 200 of 200 in one eval. It
+        # fails safe on hardware, so the real server keeps the gate; in sim
+        # there is nothing to protect and an experiment that cannot move is
+        # worth less than one with no guard.
         self._clearance = GeomClearance(
             self._sim.model, OBSTACLE_GEOMS, GUARDED_BODIES,
-            list(REBOT_SPEC.joint_names), margin=TABLE_MARGIN)
+            list(REBOT_SPEC.joint_names), margin=clearance_margin_m)
+        self._clearance_gate = clearance_gate
+        if not clearance_gate:
+            logger.warning("CLEARANCE GATE DISABLED - nothing stops a command "
+                           "driving a link into the bench. Simulation only.")
 
         self._camera_frame = self._sim.render_camera(out_size=CAMERA_OUT_SIZE)
 
@@ -112,8 +138,9 @@ class SimulationServer:
             # `current_joints` lets the gate allow moves that RETREAT from the
             # table even when they start inside the margin; without it an arm
             # that got in there would have no command left that could get out.
-            joint_gate=self._clearance.as_joint_gate(
-                current_joints=self._arm_iface.get_positions),
+            joint_gate=(self._clearance.as_joint_gate(
+                current_joints=self._arm_iface.get_positions)
+                if self._clearance_gate else None),
         )
         self._arm_server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
         arm_pb2_grpc.add_ArmServiceServicer_to_server(
