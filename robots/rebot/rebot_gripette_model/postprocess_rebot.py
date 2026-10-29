@@ -11,7 +11,40 @@ separate onshape-to-robot passes, and an earlier version of this script
 patched the URDF only. The result was a 5.35 kg arm in the IK and a 3.40 kg
 arm in the sim, with nothing to complain about it.
 
-The base weld, camera and collision classes are separate and not done yet.
+The camera and collision classes are separate and not done yet.
+
+ACTUATOR GAINS
+    The export ships kp=50 on every position actuator - a generic default, not
+    a measured property of anything. The OpenArm's model uses 500, with 120 on
+    the two gripper DOFs, and runs the same policies through the same arm
+    service.
+
+    kp=50 does not merely make the arm soft, it breaks the control loop: the
+    simulated arm settles 55 mm from the pose it is commanded to hold, while
+    arm_service rejects any command whose target runs more than 50 mm ahead of
+    the measured pose (it reads that as contact). The guard therefore fires on
+    physics alone, before a policy has asked for anything, and episodes die at
+    random steps.
+
+    THE TARGET HERE IS TRACKING, NOT FIDELITY. The real arm droops ~2.5 deg at
+    the elbow and kp=150 would reproduce that nicely - but a simulator whose
+    job is to test a policy should put the arm where the policy asked, so that
+    the executed trajectory IS the commanded one. Measured across a sweep
+    (static control-frame error at the folded and grasp poses; overshoot and
+    settling on a 20 deg elbow step):
+
+        kp=50    55 / 48 mm    the shipped value, over the cap at rest
+        kp=250   10 / 16 mm
+        kp=500    5 /  9 mm    no overshoot, 0.06 s settle
+        kp=750    3 /  6 mm    better, but nearer the edge
+        kp=1000               DIVERGES at this armature
+
+    500 it is: a 6-10x margin under the cap, no overshoot, and the value the
+    sibling arm already runs. armature stays at the export's 0.005 - raising it
+    to the OpenArm's 0.1 only slowed convergence without helping.
+
+    The gripper keeps its own kp=120, as on the OpenArm. Letting the fingers
+    inherit 500 would quadruple a gain picked for squeezing a soft object.
 
 MASSES
     The Seeed STEP import carries no materials, so onshape-to-robot gave mass
@@ -55,6 +88,13 @@ from pathlib import Path
 
 # Old reBot URDF masses, matched by chain position. Structural estimates only.
 OLD_BY_CHAIN = [1.1774, 0.4655, 1.5520, 1.2520, 0.4600, 0.2012, 0.1000]
+
+# Actuator gains - see ACTUATOR GAINS above. The arm's lives on the model's
+# default class; the gripper overrides it per actuator.
+MJCF_CLASS = "rebot_gripette"
+ARM_KP = 500
+GRIPPER_KP = 120
+GRIPPER_ACTUATORS = ("proximal", "distal")
 
 ap = argparse.ArgumentParser()
 ap.add_argument("model_dir", type=Path)
@@ -175,6 +215,31 @@ if _free:
 else:
     print("\nbase weld: root body already fixed - nothing to change")
 
+# ---- actuator gains: the export's kp=50 breaks the control loop ----
+# See ACTUATOR GAINS above. The arm's gain lives on the model's default class;
+# the gripper's two DOFs override it per actuator, as on the OpenArm.
+_gain_changes = []
+_cls = next((c for c in mroot.iter("default") if c.get("class") == MJCF_CLASS), None)
+if _cls is None:
+    print(f"\ngains: no <default class='{MJCF_CLASS}'> - cannot set the arm gain")
+else:
+    _pos = _cls.find("position")
+    if _pos is None:
+        print(f"\ngains: class '{MJCF_CLASS}' has no <position> default")
+    elif _pos.get("kp") != str(ARM_KP):
+        _gain_changes.append((_pos, "kp", _pos.get("kp"), str(ARM_KP)))
+
+for _act in mroot.iter("position"):
+    if _act.get("name") in GRIPPER_ACTUATORS and _act.get("kp") != str(GRIPPER_KP):
+        _gain_changes.append((_act, "kp", _act.get("kp"), str(GRIPPER_KP)))
+
+if _gain_changes:
+    for el, attr, cur, new in _gain_changes:
+        what = el.get("name") or f"class {MJCF_CLASS} default"
+        print(f"gains: {what} {attr} {cur} -> {new}")
+else:
+    print("gains: already set - nothing to change")
+
 print(f"\nMJCF chain ({len(mchain)}): "
       f"{' -> '.join(b.get('name') for b in mchain)}")
 print(f"{'body':<42}{'current':>10}{'old':>9}{'new':>10}  note")
@@ -218,12 +283,13 @@ print(f"\ntotal {m_before:.4f} -> {m_after:.4f} kg (+{m_after - m_before:.4f})")
 if not m_changes:
     print("MJCF: no mass change - already patched")
 
-if not (changes or m_changes or _free):
+if not (changes or m_changes or _free or _gain_changes):
     print("\nBoth files already patched. Nothing to do.")
     raise SystemExit(0)
 
 if not args.apply:
-    print(f"\nDRY RUN ({len(changes)} URDF + {len(m_changes) + len(_free)} "
+    print(f"\nDRY RUN ({len(changes)} URDF + "
+          f"{len(m_changes) + len(_free) + len(_gain_changes)} "
           f"MJCF change(s)). "
           "Re-run with --apply to write.")
     raise SystemExit(0)
@@ -246,7 +312,7 @@ if changes:
     tree.write(urdf, encoding="utf-8", xml_declaration=True)
     print(f"written {urdf}")
 
-if m_changes or _free:
+if m_changes or _free or _gain_changes:
     mbackup = mjcf_p.with_suffix(".xml.orig")
     if not mbackup.exists():
         shutil.copy2(mjcf_p, mbackup)
@@ -267,6 +333,9 @@ if m_changes or _free:
     for body, fj in _free:
         body.remove(fj)
         print(f"removed <freejoint> from {body.get('name')}")
+    for el, attr, cur, new in _gain_changes:
+        el.set(attr, new)
+        print(f"set {attr}={new} on {el.get('name') or 'the class default'}")
     mtree.write(mjcf_p, encoding="utf-8", xml_declaration=True)
     print(f"written {mjcf_p}")
 

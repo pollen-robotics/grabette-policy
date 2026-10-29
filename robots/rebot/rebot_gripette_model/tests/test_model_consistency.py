@@ -163,3 +163,37 @@ def test_the_base_is_bolted_down():
     assert not free, (
         f"{free} still has a <freejoint> - the arm is not bolted down. "
         f"Re-run postprocess_rebot.py --apply after the export.")
+
+
+def test_the_actuators_are_stiff_enough_to_track():
+    """The export ships kp=50, which does not merely make the arm soft.
+
+    `arm_service` rejects any command whose Cartesian target runs more than
+    50 mm ahead of the measured pose, reading that as contact. At kp=50 the
+    simulated arm settles 55 mm from the pose it is told to HOLD, so the guard
+    fires on gravity alone, before a policy has asked for anything, and
+    episodes die at random steps. At kp=500 the same pose settles 5 mm out.
+
+    This is a tracking requirement, not a fidelity one: the real arm droops
+    ~2.5 deg and kp=150 would reproduce that faithfully, but a simulator whose
+    job is to test a policy must put the arm where the policy asked.
+
+    postprocess_rebot.py sets these; this is what catches a re-export
+    reverting them.
+    """
+    root = ET.parse(REBOT_B601RS_XML).getroot()
+
+    cls = next((c for c in root.iter("default")
+                if c.get("class") == "rebot_gripette"), None)
+    assert cls is not None, "no <default class='rebot_gripette'> in robot.xml"
+    pos = cls.find("position")
+    assert pos is not None and pos.get("kp") == "500", (
+        f"arm actuator kp is {pos.get('kp') if pos is not None else None}, "
+        f"expected 500 - re-run postprocess_rebot.py --apply")
+
+    # The fingers keep their own, lower gain: 500 would quadruple a number
+    # picked for squeezing a soft object.
+    grippers = {a.get("name"): a.get("kp") for a in root.iter("position")
+                if a.get("name") in ("proximal", "distal")}
+    assert grippers == {"proximal": "120", "distal": "120"}, (
+        f"gripper gains are {grippers}, expected 120 on both")

@@ -4,7 +4,7 @@
   <default>
     <default class="rebot_gripette">
       <joint frictionloss="0.1" armature="0.005" />
-      <position kp="50" dampratio="1" />
+      <position kp="500" dampratio="1" />
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2" />
       </default>
@@ -887,8 +887,8 @@
     <position class="rebot_gripette" name="wrist_flex" joint="wrist_flex" inheritrange="1" />
     <position class="rebot_gripette" name="wrist_yaw" joint="wrist_yaw" inheritrange="1" />
     <position class="rebot_gripette" name="wrist_roll" joint="wrist_roll" inheritrange="1" />
-    <position class="rebot_gripette" name="proximal" joint="proximal" inheritrange="1" />
-    <position class="rebot_gripette" name="distal" joint="distal" inheritrange="1" />
+    <position class="rebot_gripette" name="proximal" joint="proximal" inheritrange="1" kp="120" />
+    <position class="rebot_gripette" name="distal" joint="distal" inheritrange="1" kp="120" />
   </actuator>
   <equality />
 </mujoco>
