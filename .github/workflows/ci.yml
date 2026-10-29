@@ -97,7 +97,7 @@ jobs:
         # no GPU. The lerobot spec is read from the dataset-tools pyproject so the
         # tested version tracks the pin automatically.
         run: |
-          SPEC=$(grep -oE "lerobot\[[a-z,]*\]==[0-9.]+" libs/grabette-dataset-tools/pyproject.toml | head -1)
+          SPEC=$(grep -oE "lerobot\[[a-z,]*\](==[0-9.]+|>=[0-9.]+,<[0-9.]+)" libs/grabette-dataset-tools/pyproject.toml | head -1)
           echo "Testing against: $SPEC"
           uv venv .venv-lerobot --python 3.12
           VIRTUAL_ENV=.venv-lerobot uv pip install --torch-backend=cpu "$SPEC" pytest pandas scipy
