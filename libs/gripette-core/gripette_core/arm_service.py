@@ -100,9 +100,19 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         max_ik_jump_violations: int = 2,
         max_target_lead_mm: float = 50.0,
         joint_gate=None,
+        object_tracker=None,
     ):
         self._arm = arm
         self._kin = kin
+        # Optional eyes on the object being picked, for a SIMULATOR. A real arm
+        # cannot see one, so None (the default) keeps the honest answers below:
+        # Reset reports no cube, GetSuccessStatus reports no success. Supplied,
+        # it must offer reset() -> (x, y, z) and status() -> (reached, lift_m).
+        # Core never imports mujoco, so the geometry arrives as an object,
+        # exactly as the bench gate arrives as `joint_gate`. The task's
+        # definition of success lives in the tracker, not here: this service
+        # drives an arm and has no business knowing what the arm is for.
+        self._object_tracker = object_tracker
         # Optional veto on an IK solution: f(joint_angles_rad) -> reason | None.
         # A reason string rejects the command; None accepts it. See the call
         # site in SendCartesianDelta for why it is a callable and not geometry.
@@ -485,6 +495,15 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
             finally:
                 self._interp_enabled = True
 
+            if self._object_tracker is not None:
+                # Repositions the object and records its start height. NOT just
+                # a reading: an episode that knocked it off the bench would
+                # otherwise leave every later episode with nothing to pick, and
+                # a 20-episode run would score them all 0 without saying why.
+                cx, cy, cz = self._object_tracker.reset()
+                return arm_pb2.ResetResponse(
+                    success=True, cube_x=cx, cube_y=cy, cube_z=cz)
+
             return arm_pb2.ResetResponse(
                 success=True,
                 cube_x=0.0,
@@ -498,8 +517,23 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
             return arm_pb2.ResetResponse(success=False, error=str(e))
 
     def GetSuccessStatus(self, request, context):
-        """No cube tracking on a real robot — always returns goal_reached=False."""
-        return arm_pb2.SuccessStatusResponse(goal_reached=False, cube_displacement=0.0)
+        """Was the object picked up?
+
+        With no `object_tracker` — a real robot — there is nothing watching the
+        object, so this reports False. That is an absence of evidence, not
+        evidence of failure, and a client must not read it as a score.
+
+        With one, `cube_displacement` is the object's VERTICAL rise above where
+        Reset left it, and `goal_reached` is whether that clears the tracker's
+        threshold. The reading is instantaneous; `evaluate.py` polls it and
+        latches, so a lift that is later dropped still counts.
+        """
+        if self._object_tracker is None:
+            return arm_pb2.SuccessStatusResponse(goal_reached=False,
+                                                 cube_displacement=0.0)
+        reached, lift = self._object_tracker.status()
+        return arm_pb2.SuccessStatusResponse(goal_reached=reached,
+                                             cube_displacement=lift)
 
     def SetTorque(self, request, context):
         """Enable/disable motor torque on the whole arm.

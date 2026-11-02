@@ -34,6 +34,7 @@ from gripette_core.kinematics import CONTROL_FRAME, Kinematics
 from gripette_core.proto import arm_pb2_grpc, gripper_pb2_grpc
 from gripette_sim.clearance import GeomClearance
 from gripette_sim.gripper_service import GripperServicer
+from gripette_sim.lift_tracker import LiftTracker
 from rebot_gripette.spec import REBOT_SPEC
 
 from rebot_gripette.obstacles import (GUARDED_BODIES, OBSTACLE_GEOMS,
@@ -48,6 +49,12 @@ ARM_PORT = 50052
 VIEWER_FPS = 60
 CAMERA_FPS = 30                 # matches the real Grabette stream
 CAMERA_OUT_SIZE = (960, 720)    # (width, height), as streamed to a policy
+
+# The body an episode is scored on. Named `red_cube` in both arms' grasp
+# scenes - here it is a drink can - because that is the name the dataset and
+# the OpenArm's servicer already use, and renaming it would only make the two
+# arms' scenes disagree for no gain.
+PICK_BODY = "red_cube"
 
 # The scene shipped with this package. Not the model's bare scene.xml: that one
 # has no table and nothing to reach for.
@@ -148,6 +155,13 @@ class SimulationServer:
             logger.warning("CLEARANCE GATE DISABLED - nothing stops a command "
                            "driving a link into the bench. Simulation only.")
 
+        # Eyes on the object, so an episode can be SCORED. Without this the
+        # shared ArmServicer gives the real arm's honest "I cannot see a cube"
+        # and every simulated episode reports 0/1 whatever happened - which is
+        # how a run that closed the gripper on empty air was once read as a
+        # lift. Disabled by itself in a scene with nothing to pick up.
+        self._lift = LiftTracker(self._sim, PICK_BODY, lock=self._lock)
+
         self._camera_frame = self._sim.render_camera(out_size=CAMERA_OUT_SIZE)
 
     def get_camera_frame(self):
@@ -174,6 +188,7 @@ class SimulationServer:
             joint_gate=(self._clearance.as_joint_gate(
                 current_joints=self._arm_iface.get_positions)
                 if self._clearance_gate else None),
+            object_tracker=self._lift if self._lift.enabled else None,
         )
         self._arm_server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
         arm_pb2_grpc.add_ArmServiceServicer_to_server(

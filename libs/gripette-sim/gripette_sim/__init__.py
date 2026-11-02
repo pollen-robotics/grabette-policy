@@ -13,6 +13,7 @@ An arm binds its two values once:
 
 from gripette_sim.camera import FisheyeCamera
 from gripette_sim.gripper_service import GripperServicer
+from gripette_sim.lift_tracker import LIFT_SUCCESS_THRESHOLD, LiftTracker
 from gripette_sim.simulation import GRIPETTE_CAM, GRIPPER_JOINT_NAMES, Simulation
 
 __all__ = [
@@ -21,6 +22,8 @@ __all__ = [
     "GRIPETTE_CAM",
     "GRIPPER_JOINT_NAMES",
     "GripperServicer",
+    "LIFT_SUCCESS_THRESHOLD",
+    "LiftTracker",
     "Simulation",
 ]
 
