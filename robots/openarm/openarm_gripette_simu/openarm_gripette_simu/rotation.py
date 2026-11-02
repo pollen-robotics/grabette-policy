@@ -5,8 +5,11 @@ New code should import from `gripette_core` directly.
 """
 
 from gripette_core.rotation import (  # noqa: F401  (re-exported)
+    MIN_DELTA_ROW_NORM,
+    delta_6d_to_matrix,
     rotation_6d_to_matrix,
     rotation_matrix_to_6d,
 )
 
-__all__ = ["rotation_matrix_to_6d", "rotation_6d_to_matrix"]
+__all__ = ["rotation_matrix_to_6d", "rotation_6d_to_matrix",
+           "delta_6d_to_matrix", "MIN_DELTA_ROW_NORM"]

@@ -39,3 +39,33 @@ def rotation_6d_to_matrix(rot_6d: np.ndarray) -> np.ndarray:
     b3 = np.cross(b1, b2, axis=-1)
 
     return np.stack([b1, b2, b3], axis=-2)
+
+
+# Both rows of a valid 6D rotation have unit length. Diffusion checkpoints
+# trained on convert_dataset.py output predict a near-ZERO 6D on "hold" chunks
+# (the converter writes hold frames as all zeros, not as the identity), and
+# Gram-Schmidt then normalizes that noise into an arbitrary rotation — up to
+# 150° in one step, which turns the wrist and trips the IK-jump watchdog.
+# Measured on red-cube-blue-box-30fps_diffusion-best: degenerate predictions
+# have a row norm <= 0.39, healthy ones >= 0.51.
+MIN_DELTA_ROW_NORM = 0.5
+
+
+def delta_6d_to_matrix(rot_6d: np.ndarray) -> tuple[np.ndarray, bool]:
+    """Decode a 6D rotation DELTA, mapping a degenerate one to the identity.
+
+    A delta with either row shorter than MIN_DELTA_ROW_NORM is not a rotation —
+    it is a policy saying "hold" — so it decodes to no rotation instead of to
+    whatever direction its noise points in.
+
+    Args:
+        rot_6d: shape (6,).
+
+    Returns:
+        (rotation matrix (3, 3), True if the delta was degenerate).
+    """
+    rot_6d = np.asarray(rot_6d, dtype=np.float64)
+    row_norms = np.linalg.norm(rot_6d.reshape(2, 3), axis=-1)
+    if row_norms.min() < MIN_DELTA_ROW_NORM:
+        return np.eye(3), True
+    return rotation_6d_to_matrix(rot_6d), False

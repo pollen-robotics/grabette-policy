@@ -61,6 +61,12 @@ ACTION_NAMES = [
     "proximal",
     "distal",
 ]
+# "Hold" pose delta: zero translation + the IDENTITY rotation in 6D. Written for
+# episode-boundary frames and despiked glitches. It must not be all zeros: a zero
+# 6D is not a rotation, policies learn to predict it on hold chunks, and the arm
+# server's Gram-Schmidt then decodes the near-zero prediction into an arbitrary
+# rotation (measured up to ~150° in one step).
+HOLD_DELTA = np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float32)
 STATE_NAMES_NONE = ["proximal", "distal"]
 STATE_NAMES_RELATIVE = [
     "dx_start",
@@ -182,7 +188,7 @@ def compute_delta_actions(poses_11d: np.ndarray, episode_indices: np.ndarray) ->
 
     Gripper dims (9, 10) stay absolute — no frame to worry about.
 
-    At episode boundaries the delta is zeroed (no next frame).
+    At episode boundaries the delta is a hold, HOLD_DELTA (no next frame).
     """
     n = len(poses_11d)
     actions = np.zeros((n, 11), dtype=np.float32)
@@ -203,10 +209,10 @@ def compute_delta_actions(poses_11d: np.ndarray, episode_indices: np.ndarray) ->
             R_delta.reshape(1, 3, 3)
         )[0]
 
-    # Zero out deltas at episode boundaries (action[last_frame_of_ep] = 0).
+    # Hold at episode boundaries (action[last_frame_of_ep] = HOLD_DELTA).
     ep_change = np.where(episode_indices[1:] != episode_indices[:-1])[0]
-    actions[ep_change, :9] = 0.0
-    actions[-1, :9] = 0.0
+    actions[ep_change, :9] = HOLD_DELTA
+    actions[-1, :9] = HOLD_DELTA
 
     # Gripper: absolute values (dims 9-10).
     actions[:, 9:] = poses_11d[:, 9:]
@@ -350,14 +356,14 @@ def parse_args():
         "--despike_max_mm",
         type=float,
         default=80.0,
-        help="Per-step |Δpos| above this (mm) is a glitch → that delta is zeroed. "
+        help="Per-step |Δpos| above this (mm) is a glitch → that delta becomes a hold. "
              "80mm/step ≈ 4 m/s at 50fps, well above hand speed but below SLAM jumps.",
     )
     parser.add_argument(
         "--despike_max_deg",
         type=float,
         default=5.0,
-        help="Per-step rotation delta above this (deg) is a glitch → that delta is zeroed. "
+        help="Per-step rotation delta above this (deg) is a glitch → that delta becomes a hold. "
              "5°/step = 250°/s at 50fps, above human wrist speed (~150°/s peak) but below "
              "SLAM orientation glitches. (Was 45°: that let 5-45° glitches into training — "
              "the policy reproduced them at eval, amplified through the widened r6d "
@@ -470,11 +476,11 @@ def main():
             f"(mean pos delta: {np.linalg.norm(delta_actions[:, :3], axis=1).mean() * 1000:.2f} mm)"
         )
 
-        # --- Zero out per-step outlier deltas (SLAM tracking glitches) ---
+        # --- Replace per-step outlier deltas with a hold (SLAM tracking glitches) ---
         # A single glitch frame yields one impossibly-large delta (a
         # relocalization "step" — the offset cancels in every OTHER delta) or
         # two (a "return" spike). Since we train on deltas, replacing the
-        # outlier with 0 = "hold for that frame", which removes the bad action
+        # outlier with HOLD_DELTA = "hold for that frame" removes the bad action
         # with no side effect on the rest of the trajectory. Episodes with
         # segments too long to absorb this way are dropped upstream by
         # clean_dataset.py (same --despike_max_* thresholds).
@@ -484,15 +490,12 @@ def main():
             Rd = rotation_6d_to_rotation_matrix_numpy(r6d)
             cos = np.clip((np.trace(Rd, axis1=1, axis2=2) - 1.0) / 2.0, -1.0, 1.0)
             ang_deg = np.degrees(np.arccos(cos))
-            # Episode-boundary deltas are already zeroed to [0..0]; that degenerate
-            # 6D yields a bogus angle, so only apply the rotation test to real
-            # (non-zero) rotation deltas.
-            valid_rot = np.linalg.norm(r6d, axis=1) > 1e-6
-            bad = (dpos_mm > args.despike_max_mm) | (valid_rot & (ang_deg > args.despike_max_deg))
+            # Episode-boundary holds are the identity, so they measure 0° here.
+            bad = (dpos_mm > args.despike_max_mm) | (ang_deg > args.despike_max_deg)
             if bad.any():
-                delta_actions[bad, :9] = 0.0
+                delta_actions[bad, :9] = HOLD_DELTA
                 logger.info(
-                    f"  {pf.name}: zeroed {int(bad.sum())} outlier delta(s) "
+                    f"  {pf.name}: replaced {int(bad.sum())} outlier delta(s) with a hold "
                     f"(>{args.despike_max_mm:.0f}mm or >{args.despike_max_deg:.0f}°)"
                 )
 

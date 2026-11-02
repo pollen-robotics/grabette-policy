@@ -32,7 +32,8 @@ from typing import TYPE_CHECKING, Protocol
 import numpy as np
 
 from gripette_core.proto import arm_pb2, arm_pb2_grpc
-from gripette_core.rotation import rotation_6d_to_matrix, rotation_matrix_to_6d
+from gripette_core.rotation import (delta_6d_to_matrix, rotation_6d_to_matrix,
+                                    rotation_matrix_to_6d)
 
 if TYPE_CHECKING:
     from gripette_core.kinematics import Kinematics
@@ -144,6 +145,8 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         # position may LEAD the measured FK pose. <= 0 disables.
         self._max_target_lead_m = float(max_target_lead_mm) / 1000.0
         self._lead_clamps = 0
+        # Degenerate 6D deltas replaced by "no rotation" (see delta_6d_to_matrix).
+        self._degenerate_r6d_count = 0
         # Windowed trip history (1=trip, 0=clean) — a dithering policy
         # interleaves lead-increasing and lead-reducing commands, so a
         # CONSECUTIVE counter never fires while the arm stays pressed at cap
@@ -236,7 +239,19 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
                 delta_pos_world = R_target @ delta_pos
                 self._target_pos = self._target_pos + delta_pos_world
 
-                R_delta = rotation_6d_to_matrix(delta_r6d)
+                # A near-zero dr6d is a "hold" prediction, not a rotation:
+                # apply no rotation rather than the noise's arbitrary one,
+                # which turns the wrist and trips the IK-jump watchdog.
+                R_delta, degenerate = delta_6d_to_matrix(delta_r6d)
+                if degenerate:
+                    self._degenerate_r6d_count += 1
+                    if (self._degenerate_r6d_count <= 3
+                            or self._degenerate_r6d_count % 50 == 0):
+                        logger.warning(
+                            "Degenerate dr6d #%d %s: applying no rotation "
+                            "(translation kept).",
+                            self._degenerate_r6d_count,
+                            np.round(delta_r6d, 3).tolist())
                 R_target_new = R_target @ R_delta
                 self._target_r6d = rotation_matrix_to_6d(R_target_new).copy()
 

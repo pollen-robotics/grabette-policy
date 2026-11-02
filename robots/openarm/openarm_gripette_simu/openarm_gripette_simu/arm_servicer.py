@@ -15,7 +15,7 @@ import mujoco
 
 from .kinematics import Kinematics, CONTROL_FRAME
 from .pedestal import PedestalClearance, PEDESTAL_MARGIN
-from .rotation import rotation_matrix_to_6d, rotation_6d_to_matrix
+from .rotation import delta_6d_to_matrix, rotation_matrix_to_6d, rotation_6d_to_matrix
 from .proto import arm_pb2, arm_pb2_grpc
 
 logger = logging.getLogger(__name__)
@@ -98,6 +98,9 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         # Cube initial position for success tracking (set on reset)
         self._cube_start_xy = np.array([CUBE_NOMINAL_X, CUBE_NOMINAL_Y])
         self._cube_start_z = CUBE_Z   # lift is measured against this
+
+        # Degenerate 6D deltas replaced by "no rotation" (see delta_6d_to_matrix).
+        self._degenerate_r6d_count = 0
 
         # Internal Cartesian target — initialized from current FK
         self._sync_target_from_sim()
@@ -318,7 +321,15 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
                 self._target_pos = self._target_pos + delta_pos_world
 
                 # Rotation: R_target_new = R_target @ R_delta_local
-                R_delta = rotation_6d_to_matrix(delta_r6d)
+                # A near-zero dr6d is a "hold" prediction, not a rotation:
+                # apply no rotation rather than the noise's arbitrary one.
+                R_delta, degenerate = delta_6d_to_matrix(delta_r6d)
+                if degenerate:
+                    self._degenerate_r6d_count += 1
+                    if self._degenerate_r6d_count <= 3 or self._degenerate_r6d_count % 50 == 0:
+                        logger.warning(
+                            "Degenerate dr6d #%d %s: applying no rotation (translation kept).",
+                            self._degenerate_r6d_count, np.round(delta_r6d, 3).tolist())
                 R_target_new = R_target @ R_delta
                 self._target_r6d = rotation_matrix_to_6d(R_target_new).copy()
 

@@ -4,7 +4,7 @@ The wrist camera loses SLAM tracking when the grasped object occludes it. The
 postprocess build flags those frames (`is_lost`) and holds the last pose, so a
 SHORT lost gap is benign: "assume no motion" (held pose → delta ≈ 0) is a fine
 approximation for one or a few frames, and any residual re-acquisition jump is
-zeroed per-frame by `convert_dataset.py`'s --despike backstop. A LONG lost run,
+replaced by a hold per-frame by `convert_dataset.py`'s --despike backstop. A LONG lost run,
 though, means the arm really moved through the occlusion — that motion is gone
 and can't be recovered, so the whole episode is dropped.
 
