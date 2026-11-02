@@ -58,7 +58,7 @@ class SimulationServer:
     """MuJoCo simulation of the reBot, with the Gripette and arm gRPC services."""
 
     def __init__(self, home_joints_rad, scene_xml=None, orientation_weight=10.0,
-                 clearance_margin_m=TABLE_MARGIN, clearance_gate=True):
+                 clearance_margin_m=TABLE_MARGIN):
         self._sim = Simulation(scene_xml or DEFAULT_SCENE)
         self._kin = Kinematics(REBOT_SPEC, orientation_weight=orientation_weight)
         self._lock = threading.Lock()
@@ -91,29 +91,28 @@ class SimulationServer:
         # a grasp is not a reach: picking an object off the bench puts the
         # fingertips within millimetres of the surface by definition. At the
         # 20 mm default a grasp policy had 176 of 200 commands vetoed, the
-        # closest at -6.7 mm. Lower it for a pick task, with the obvious cost -
-        # the gate is what stops a bad solution driving into the table, so a
-        # smaller number buys the policy room and spends the guard's authority.
-        # Same knob the real server exposes as --clearance_margin_mm.
+        # closest at -6.7 mm - a genuine penetration, not a misreading. Lower
+        # it for a pick task, with the obvious cost: the gate is what stops a
+        # bad solution driving into the table, so a smaller number buys the
+        # policy room and spends the guard's authority. Same knob the real
+        # server exposes as --clearance_margin_mm.
         #
-        # The gate can also be turned OFF here, which the real server must
-        # never allow. `mj_geomDistance` returns a hard 0.0 for a few of this
-        # model's collision geoms that are plainly 100-370 mm clear - measured
-        # per geom, and the same pair answers correctly in a two-geom model, so
-        # it is neither the hulls (capping maxhullvert does not fix it) nor the
-        # collision mask (the OpenArm's contype/conaffinity does not either).
-        # Because the gate takes a min over every pair, ONE such reading pins
-        # it to 0.0 and every command is refused: 200 of 200 in one eval. It
-        # fails safe on hardware, so the real server keeps the gate; in sim
-        # there is nothing to protect and an experiment that cannot move is
-        # worth less than one with no guard.
+        # THE MARGIN IS ALSO THE QUERY'S CUTOFF, AND THAT MATTERS. `clearance`
+        # passes it to mj_geomDistance as distmax, so anything further away
+        # costs nothing to evaluate and comes back clamped. Keep it that way.
+        # MuJoCo 3.9's convex-distance solver returns a hard 0.0 for some
+        # mesh/box pairs when it is asked for a LONG separation - reproducible
+        # in a model holding nothing but one mesh and one box 375 mm apart,
+        # where it reports 0.0 while filling a 455 mm witness segment, and
+        # unaffected by ccd_iterations, ccd_tolerance or the collision mask.
+        # Asked with distmax <= the margin it never enters that path: checked
+        # over 3000 random configurations against a closed-form hull-vertex-
+        # to-box reference, this gate gave 0 false passes and 1 false block,
+        # agreeing to a median of 0.02 mm. Raise distmax above the margin and
+        # that guarantee is gone.
         self._clearance = GeomClearance(
             self._sim.model, OBSTACLE_GEOMS, GUARDED_BODIES,
             list(REBOT_SPEC.joint_names), margin=clearance_margin_m)
-        self._clearance_gate = clearance_gate
-        if not clearance_gate:
-            logger.warning("CLEARANCE GATE DISABLED - nothing stops a command "
-                           "driving a link into the bench. Simulation only.")
 
         self._camera_frame = self._sim.render_camera(out_size=CAMERA_OUT_SIZE)
 
@@ -138,9 +137,8 @@ class SimulationServer:
             # `current_joints` lets the gate allow moves that RETREAT from the
             # table even when they start inside the margin; without it an arm
             # that got in there would have no command left that could get out.
-            joint_gate=(self._clearance.as_joint_gate(
-                current_joints=self._arm_iface.get_positions)
-                if self._clearance_gate else None),
+            joint_gate=self._clearance.as_joint_gate(
+                current_joints=self._arm_iface.get_positions),
         )
         self._arm_server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
         arm_pb2_grpc.add_ArmServiceServicer_to_server(

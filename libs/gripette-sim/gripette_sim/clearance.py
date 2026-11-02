@@ -22,15 +22,29 @@ LIMITS, WORTH STATING
     as guarded. It is not a general self-collision check, and it knows nothing
     about anything the gripper is holding.
 
-    The distance stops being a DEPTH once a link is through the surface:
-    mj_geomDistance returns 0 for an intersecting mesh/box rather than a
-    negative penetration, so two scenes modelling the same bench can report
-    different numbers for the same breaching pose. Both still refuse it - the
-    verdict is "under the margin", not "how far under" - which is what the
-    gate rests on. The one place the magnitude is used is the retreat
-    exception below, so retreating from a pose that is already THROUGH the
-    surface may not be recognised as retreat. Getting there is the failure the
-    gate exists to prevent; recovering from it is a job for a human.
+    The distance is not always a DEPTH once a link is through the surface.
+    mj_geomDistance usually does report a negative penetration for an
+    intersecting mesh/box - 382 of 3000 random reBot configurations, down to
+    -114 mm - but it saturates at exactly 0.0 for some of them (15 of the same
+    3000). Both still refuse the pose: the verdict is "under the margin", not
+    "how far under", which is what the gate rests on. The one place the
+    magnitude is used is the retreat exception below, so retreating from a
+    pose that reads a saturated 0.0 may not be recognised as retreat - it was
+    still escapable in practice (5 of 30 perturbations accepted), but do not
+    count on it. Getting there is the failure the gate exists to prevent.
+
+    DO NOT RAISE distmax ABOVE THE MARGIN. `clearance` deliberately passes the
+    margin itself as mj_geomDistance's distmax, so a link further away than
+    that comes back clamped and the solver is never asked to measure it.
+    MuJoCo 3.9's convex-distance solver returns a hard 0.0 for some mesh/box
+    pairs when asked for a long separation - reproducible with nothing in the
+    model but one mesh and one box 375 mm apart, where it reports 0.0 while
+    filling a 455 mm witness segment, and unaffected by ccd_iterations,
+    ccd_tolerance or the collision mask. A min over many pairs means one such
+    reading pins the whole result to 0.0 and the gate refuses everything.
+    Inside the margin the query is sound: over those 3000 configurations,
+    checked against a closed-form hull-vertex-to-box distance, 0 false passes
+    and 1 false block, agreeing to a median of 0.02 mm.
 """
 
 import logging

@@ -11,7 +11,31 @@ separate onshape-to-robot passes, and an earlier version of this script
 patched the URDF only. The result was a 5.35 kg arm in the IK and a 3.40 kg
 arm in the sim, with nothing to complain about it.
 
-The camera and collision classes are separate and not done yet.
+The camera class is separate and not done yet.
+
+COLLISION MASK
+    The export leaves the collision class as a bare <geom group="3"/>, so every
+    collision geom takes MuJoCo's default contype=1/conaffinity=1 and therefore
+    collides with everything, including the rest of the arm. The OpenArm's
+    collision class carries contype="2" conaffinity="1", under which arm-vs-arm
+    is masked off while arm-vs-world is not:
+
+        arm(2,1) vs arm(2,1)     2&1 | 2&1 = 0   masked
+        arm(2,1) vs table(1,1)   2&1 | 1&1 = 1   still collides
+        arm(2,1) vs can(1,1)     2&1 | 1&1 = 1   still collides
+
+    Without it the reBot reports 48 contacts at its own eval start pose - all
+    of them axis_1 against axis_2, two welded base links whose CAD solids
+    overlap - and placo prints self-collision warnings over the same geometry.
+    Matching the OpenArm takes that to 0.
+
+    This does NOT weaken the bench guard: `gripette_sim.clearance` selects
+    geoms by `contype or conaffinity`, which (2,1) still satisfies, and the
+    guard's readings are unchanged (138 geoms, same distances). Verified too
+    that the fingers still contact the can and the links still contact the
+    table. What is lost is genuine arm-vs-arm self-collision in physics, which
+    this model never represented usefully anyway - the overlapping base solids
+    would have to be fixed in CAD first.
 
 ACTUATOR GAINS
     The export ships kp=50 on every position actuator - a generic default, not
@@ -95,6 +119,11 @@ MJCF_CLASS = "rebot_gripette"
 ARM_KP = 500
 GRIPPER_KP = 120
 GRIPPER_ACTUATORS = ("proximal", "distal")
+
+# Collision mask - see COLLISION MASK above. Same values the OpenArm's
+# collision class carries, for the same reason.
+COLLISION_CLASS = "collision"
+COLLISION_MASK = {"contype": "2", "conaffinity": "1"}
 
 ap = argparse.ArgumentParser()
 ap.add_argument("model_dir", type=Path)
@@ -240,6 +269,30 @@ if _gain_changes:
 else:
     print("gains: already set - nothing to change")
 
+# ---- collision mask: the export's default makes the arm collide with itself ----
+# See COLLISION MASK above. One attribute pair on the collision class, which
+# every collision geom inherits - the same place the OpenArm carries it.
+_mask_changes = []
+_coll = next((c for c in mroot.iter("default")
+              if c.get("class") == COLLISION_CLASS), None)
+if _coll is None:
+    print(f"\nmask: no <default class='{COLLISION_CLASS}'> - cannot set the mask")
+else:
+    _cgeom = _coll.find("geom")
+    if _cgeom is None:
+        print(f"\nmask: class '{COLLISION_CLASS}' has no <geom> default")
+    else:
+        for attr, want in COLLISION_MASK.items():
+            if _cgeom.get(attr) != want:
+                _mask_changes.append((_cgeom, attr, _cgeom.get(attr), want))
+
+if _mask_changes:
+    for el, attr, cur, new in _mask_changes:
+        print(f"mask: class {COLLISION_CLASS} geom {attr} "
+              f"{cur or '(unset, MuJoCo default 1)'} -> {new}")
+else:
+    print("mask: already set - nothing to change")
+
 print(f"\nMJCF chain ({len(mchain)}): "
       f"{' -> '.join(b.get('name') for b in mchain)}")
 print(f"{'body':<42}{'current':>10}{'old':>9}{'new':>10}  note")
@@ -283,13 +336,13 @@ print(f"\ntotal {m_before:.4f} -> {m_after:.4f} kg (+{m_after - m_before:.4f})")
 if not m_changes:
     print("MJCF: no mass change - already patched")
 
-if not (changes or m_changes or _free or _gain_changes):
+if not (changes or m_changes or _free or _gain_changes or _mask_changes):
     print("\nBoth files already patched. Nothing to do.")
     raise SystemExit(0)
 
 if not args.apply:
     print(f"\nDRY RUN ({len(changes)} URDF + "
-          f"{len(m_changes) + len(_free) + len(_gain_changes)} "
+          f"{len(m_changes) + len(_free) + len(_gain_changes) + len(_mask_changes)} "
           f"MJCF change(s)). "
           "Re-run with --apply to write.")
     raise SystemExit(0)
@@ -312,7 +365,7 @@ if changes:
     tree.write(urdf, encoding="utf-8", xml_declaration=True)
     print(f"written {urdf}")
 
-if m_changes or _free or _gain_changes:
+if m_changes or _free or _gain_changes or _mask_changes:
     mbackup = mjcf_p.with_suffix(".xml.orig")
     if not mbackup.exists():
         shutil.copy2(mjcf_p, mbackup)
@@ -333,7 +386,7 @@ if m_changes or _free or _gain_changes:
     for body, fj in _free:
         body.remove(fj)
         print(f"removed <freejoint> from {body.get('name')}")
-    for el, attr, cur, new in _gain_changes:
+    for el, attr, cur, new in _gain_changes + _mask_changes:
         el.set(attr, new)
         print(f"set {attr}={new} on {el.get('name') or 'the class default'}")
     mtree.write(mjcf_p, encoding="utf-8", xml_declaration=True)
