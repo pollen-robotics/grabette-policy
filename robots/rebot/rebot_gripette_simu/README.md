@@ -4,12 +4,20 @@ MuJoCo simulation of the reBot B601-RS + Gripette, serving the **same two gRPC
 services as the real arm** — because they are the same code, not a port of it.
 
 ```bash
-uv run python -m rebot_gripette_simu --home_joints 0 15 25 -10 0 0
+# the bare table scene, any valid pose
 uv run python -m rebot_gripette_simu --home_joints 0 15 25 -10 0 0 --headless
+
+# the grasp scene and the start pose a policy actually picks from
+uv run python -m rebot_gripette_simu \
+  --home_joints -25.2 127.0 65.7 27.5 -61.8 -30.5 \
+  --scene robots/rebot/rebot_gripette_simu/scenes/table_grasp.xml \
+  --no_clearance_gate
 ```
 
-Run and confirmed working on 2026-10-28: viewer, both services, and the
-fisheye camera stream.
+Driving `SteveNguyen/test_pick_can_200_smooth_trim-best` at the second of
+those: **11/20 episodes lift the can**, average displacement 38.8 mm. The full
+two-terminal recipe, and the three ways to get it wrong, are in
+[`../README.md`](../README.md).
 
 | Service | Port | Supplied by |
 |---|---|---|
@@ -25,7 +33,8 @@ Almost nothing, and that is the design:
 | `simulation.py` | two class attributes: the arm's joint names and its default scene |
 | `sim_arm_interface.py` | `ArmInterface` over MuJoCo instead of over CAN — the only genuinely new code |
 | `server.py` | wiring, plus the camera render loop |
-| `scenes/table.xml` | a table placed for **this** arm, which reaches in −x |
+| `scenes/table.xml` | a bare bench placed for **this** arm, which reaches in −x |
+| `scenes/table_grasp.xml` | the same bench plus the can — the grasp scene every measurement here uses |
 
 `rebot_gripette/grpc_server_real.py` hands `ArmServicer` a CAN-backed
 interface; this hands it a MuJoCo-backed one. The Cartesian integrator, the
@@ -72,16 +81,49 @@ y −3, z +371 mm and `gripper_center` at x −224, z **+318 mm above the table
 surface** — a working height, with the cube under it. The work area is at
 negative x, so this is **not** a mirror of the OpenArm's `table_red_cube.xml`.
 
-The 318 mm is measured from the model. The table's **extent** (0.80 × 0.70 m,
-arm 10 cm in from one edge) is a guess — measure the real bench and change it.
+The 318 mm is measured from the model.
 
-## Known gap: the sim is softer than the arm
+The bench **extent** is not a guess any more, but it is also not the real
+bench: it was narrowed to **0.85 × 0.36 m**, ending 150 mm past the can, so
+the camera sees a patch of table comparable to the one the policy trained on.
+THE BENCH EXTENT IS PART OF THE OBSERVATION — training used a 300 × 300 mm
+table floating in a void, and this is the closest match that still supports
+the arm. Measure the real bench before trusting any of it on hardware.
 
-With torque on at the home pose the simulated `elbow_flex` droops **7.4°**
-where the real arm droops **2.5°** — the MuJoCo actuator gains are softer than
-the follower's `mit_kp`. Nothing depends on it yet, but a policy trained here
-would see tracking the hardware does not reproduce, so this is the first thing
-to reconcile before any dataset is recorded in sim.
+## Tracking: reconciled
+
+The simulated arm used to droop **7.4°** at the elbow against the real arm's
+2.5°, because the export shipped `kp=50` on every position actuator. That is
+not merely soft, it breaks the control loop: the arm settled 55 mm from the
+pose it was commanded to hold, and `arm_service` reads a 50 mm target lead as
+contact, so the guard fired on physics alone. `postprocess_rebot.py` now
+writes `kp=500` (120 on the gripper, as on the OpenArm), measured at 5 mm
+static error with no overshoot. See that script's ACTUATOR GAINS note for the
+sweep and for why tracking, not fidelity, is the target here.
+
+## Scoring an episode
+
+`gripette_core.arm_service.ArmServicer` is the class the REAL arm serves, so
+its `GetSuccessStatus` correctly reports that a real robot cannot see the
+object. This simulator serves that same class and therefore inherited the
+blind `False` — every episode scored 0/1 whatever happened, and a run whose
+gripper closed on empty air was once recorded as a successful lift.
+
+`server.py` now passes an `object_tracker`: `gripette_sim.LiftTracker`,
+injected the same way the bench guard is injected as a `joint_gate`, so core
+still imports no mujoco. `Reset` repositions the can, zeroes its velocity and
+records its height; `GetSuccessStatus` reports the rise against that.
+
+* Success = the can up **≥ 50 mm**, `LIFT_SUCCESS_THRESHOLD` — equal to
+  `grabette_trajectory`'s, so this arm's numbers mean what the OpenArm's mean.
+  A horizontal nudge is not a pick.
+* `Reset` REPOSITIONS rather than only recording, so an episode that knocks
+  the can off the bench does not silently score every later episode 0.
+* The reading is instantaneous and `evaluate.py` latches it, so a can lifted
+  and then dropped still counts. That is the OpenArm's behaviour too.
+
+A scene with no `red_cube`, or one where it is bolted down, disables the
+tracker rather than raising.
 
 ## The clearance gate
 
@@ -122,6 +164,47 @@ clear it.
 margin is deadlocked — every command that could free it is also a command
 inside the margin, so the gate refuses them all and the only way out is killing
 the server, which is the state this exists to avoid.
+
+### The gate cannot express a PICK — `--no_clearance_gate`
+
+One margin applies to every guarded body, and a grasp needs two things at
+once:
+
+> the **fingertips** are supposed to reach the bench; the **arm links** are not.
+
+The start pose is clear — no guarded geom within 20 mm — but descending ~8° to
+close on the can puts `gripette_r_distal` 5.8 mm under the bench top. That is
+the task, not a fault, and no single margin admits it:
+
+| margin | outcome, driving the pick policy |
+|---|---|
+| 20 mm (default) | 236 of 250 commands refused, 0.0 mm displacement |
+| 0 mm | 236 of 250 refused — the fingertips still go under |
+| −15 mm | 238 of 250 refused; the policy then asks for −17 to −21 mm |
+| gate off | 19 of 250 refused, episode runs, **11/20 lift the can** |
+
+The number was never the problem. So the simulator takes
+`--no_clearance_gate`, and **the real server deliberately gets no such flag**:
+on hardware, over-blocking is the safe way to be wrong.
+
+The real fix is a margin **per guarded body** — fingers near 0, links at
+20 mm — in `obstacles.py` and `clearance.py`. Until then the sim runs
+unguarded for pick tasks, and you will see the gripper touch the bench.
+
+### Do not raise the query's `distmax`
+
+`clearance()` passes the margin itself as `mj_geomDistance`'s `distmax`, so
+anything further away comes back clamped and the solver is never asked to
+measure it. Keep it that way: MuJoCo 3.9's convex-distance solver returns a
+hard 0.0 for some mesh/box pairs when asked for a LONG separation —
+reproducible with nothing in the model but one mesh and one box 375 mm apart,
+where it reports 0.0 while filling a 455 mm witness segment, and unaffected by
+`ccd_iterations`, `ccd_tolerance` or the collision mask. A `min` over many
+pairs means one such reading pins the whole result to 0.0.
+
+Inside the margin the query is sound: over 3000 random configurations checked
+against a closed-form hull-vertex-to-box distance, **0 false passes and 1
+false block**, agreeing to a median of 0.02 mm.
 
 ### Still not guarded
 
