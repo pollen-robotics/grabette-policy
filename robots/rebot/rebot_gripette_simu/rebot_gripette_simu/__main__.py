@@ -46,6 +46,13 @@ def main():
                         "figure; a GRASP needs less, since picking an object "
                         "off the bench puts the fingertips millimetres from it. "
                         "Same flag the real server takes.")
+    p.add_argument("--no_clearance_gate", action="store_true",
+                   help="turn the bench guard OFF. Needed for a PICK: the gate "
+                        "holds every guarded body to one margin, and a grasp "
+                        "puts the fingertips BELOW the bench top by design, so "
+                        "no margin - not even a negative one - lets the policy "
+                        "close on the object. See server.py. There is no such "
+                        "flag on the real server.")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO,
@@ -63,6 +70,8 @@ def main():
     kwargs = {}
     if args.clearance_margin_mm is not None:
         kwargs["clearance_margin_m"] = args.clearance_margin_mm / 1000.0
+    if args.no_clearance_gate:
+        kwargs["clearance_gate"] = False
     server = SimulationServer(home_joints_rad=home_rad, scene_xml=args.scene,
                               **kwargs)
     server.run(gripper_port=args.gripper_port, arm_port=args.arm_port,

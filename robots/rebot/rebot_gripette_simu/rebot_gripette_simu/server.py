@@ -58,7 +58,7 @@ class SimulationServer:
     """MuJoCo simulation of the reBot, with the Gripette and arm gRPC services."""
 
     def __init__(self, home_joints_rad, scene_xml=None, orientation_weight=10.0,
-                 clearance_margin_m=TABLE_MARGIN):
+                 clearance_margin_m=TABLE_MARGIN, clearance_gate=True):
         self._sim = Simulation(scene_xml or DEFAULT_SCENE)
         self._kin = Kinematics(REBOT_SPEC, orientation_weight=orientation_weight)
         self._lock = threading.Lock()
@@ -110,9 +110,43 @@ class SimulationServer:
         # to-box reference, this gate gave 0 false passes and 1 false block,
         # agreeing to a median of 0.02 mm. Raise distmax above the margin and
         # that guarantee is gone.
+        # THE GATE CAN BE TURNED OFF HERE, AND THE REAL SERVER GETS NO SUCH
+        # FLAG. Not because the query is wrong - it is sound (see above) - but
+        # because this gate cannot express the task. GUARDED_BODIES is
+        # all-or-nothing per body under one global margin, and a pick says two
+        # different things at once:
+        #
+        #     the FINGERTIPS are supposed to reach the bench;
+        #     the ARM LINKS are not.
+        #
+        # Measured, driving test_pick_can_200_smooth_trim-best at the eval
+        # start pose. The start itself is clear - no guarded geom within 20 mm
+        # - but descending ~8 deg to close on the can puts gripette_r_distal
+        # 5.8 mm under the bench top, which is the grasp, not a fault:
+        #
+        #     margin   0 mm : 236 of 250 commands refused, 0.0 mm displacement
+        #     margin -15 mm : 238 of 250 refused; the policy then wants -17 to
+        #                     -21 mm, so the number was never the problem
+        #
+        # The stall is what makes it permanent. The arm is caught in the first
+        # three steps by the target-lead cap, and a frozen arm returns a frozen
+        # observation, so the policy re-predicts the same descent forever. With
+        # the gate off the same lead-cap rejections happen, the arm moves
+        # anyway, the view changes, and it recovers to a lift.
+        #
+        # The fix is a margin PER GUARDED BODY - fingers near 0, links at
+        # 20 mm - in obstacles.py and clearance.py, which are shared with the
+        # real server. Until then: hardware keeps the gate unconditionally,
+        # because over-blocking is the safe way to be wrong on a real arm, and
+        # sim gets a switch, because there is nothing here to protect and an
+        # experiment that cannot move is worth less than one with no guard.
         self._clearance = GeomClearance(
             self._sim.model, OBSTACLE_GEOMS, GUARDED_BODIES,
             list(REBOT_SPEC.joint_names), margin=clearance_margin_m)
+        self._clearance_gate = clearance_gate
+        if not clearance_gate:
+            logger.warning("CLEARANCE GATE DISABLED - nothing stops a command "
+                           "driving a link into the bench. Simulation only.")
 
         self._camera_frame = self._sim.render_camera(out_size=CAMERA_OUT_SIZE)
 
@@ -137,8 +171,9 @@ class SimulationServer:
             # `current_joints` lets the gate allow moves that RETREAT from the
             # table even when they start inside the margin; without it an arm
             # that got in there would have no command left that could get out.
-            joint_gate=self._clearance.as_joint_gate(
-                current_joints=self._arm_iface.get_positions),
+            joint_gate=(self._clearance.as_joint_gate(
+                current_joints=self._arm_iface.get_positions)
+                if self._clearance_gate else None),
         )
         self._arm_server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
         arm_pb2_grpc.add_ArmServiceServicer_to_server(

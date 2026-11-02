@@ -26,8 +26,13 @@ COLLISION MASK
 
     Without it the reBot reports 48 contacts at its own eval start pose - all
     of them axis_1 against axis_2, two welded base links whose CAD solids
-    overlap - and placo prints self-collision warnings over the same geometry.
-    Matching the OpenArm takes that to 0.
+    overlap. Matching the OpenArm takes that to 0.
+
+    IT DOES NOT SILENCE PLACO. Placo reads the URDF and this patch is
+    MJCF-only, so `Robot has the following self collisions in neutral
+    position: axis_1_0 collides with axis_2_2 ...` still prints on every
+    server start. Same overlapping CAD, a different file; fixing it there
+    means collision geometry in the URDF, or fixing the geometry itself.
 
     This does NOT weaken the bench guard: `gripette_sim.clearance` selects
     geoms by `contype or conaffinity`, which (2,1) still satisfies, and the
