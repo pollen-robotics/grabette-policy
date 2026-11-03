@@ -22,13 +22,20 @@ load such a checkpoint — the price of leaving "stock upstream everywhere".
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 import torch
 from lerobot.configs import PipelineFeatureType, PolicyFeature
-from lerobot.processor import ProcessorStep, ProcessorStepRegistry
+from lerobot.processor import (
+    DeviceProcessorStep,
+    NormalizerProcessorStep,
+    ProcessorStep,
+    ProcessorStepRegistry,
+    UnnormalizerProcessorStep,
+)
 from lerobot.types import EnvTransition, TransitionKey
 
 from grabette_chunkrel.chunk_relative import (
@@ -181,3 +188,37 @@ class AbsoluteFromChunkRelativeStep(ProcessorStep):
         self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]]
     ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
         return features
+
+
+def insert_chunk_relative(pre, post):
+    """Add the chunk-relative steps to pipelines that have no relative slot (ACT).
+
+    pi05 ships a `RelativeActionsProcessorStep` slot that its launcher replaces;
+    ACT's pipeline has none, so the pair is inserted instead:
+
+        pre:  ... -> ChunkRelativeActionsStep -> DeviceProcessorStep -> ... NormalizerProcessorStep
+        post: UnnormalizerProcessorStep -> AbsoluteFromChunkRelativeStep -> ...
+
+    The forward step must precede the normaliser, because the dataset stats
+    describe the relative distribution. Returns new pipelines; the inputs are
+    left untouched. Raises if the steps are already there (a resumed run's
+    pipeline) or if either anchor step is missing.
+    """
+    if any(isinstance(s, ChunkRelativeActionsStep) for s in pre.steps):
+        raise ValueError("the chunk-relative steps are already installed in this pipeline")
+    if not any(isinstance(s, NormalizerProcessorStep) for s in pre.steps):
+        raise ValueError(f"no NormalizerProcessorStep in {[type(s).__name__ for s in pre.steps]}")
+
+    def index_of(steps, cls):
+        idx = [i for i, s in enumerate(steps) if isinstance(s, cls)]
+        if not idx:
+            raise ValueError(f"no {cls.__name__} in {[type(s).__name__ for s in steps]}")
+        return idx[0]
+
+    forward = ChunkRelativeActionsStep()
+    pre_steps = list(pre.steps)
+    pre_steps.insert(index_of(pre_steps, DeviceProcessorStep), forward)
+    post_steps = list(post.steps)
+    post_steps.insert(index_of(post_steps, UnnormalizerProcessorStep) + 1,
+                      AbsoluteFromChunkRelativeStep(relative_step=forward))
+    return dataclasses.replace(pre, steps=pre_steps), dataclasses.replace(post, steps=post_steps)
