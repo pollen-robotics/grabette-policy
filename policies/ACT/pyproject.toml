@@ -1,0 +1,22 @@
+[project]
+name = "grabette-act"
+version = "0.1.0"
+description = "ACT training with chunk-relative actions for Grabette demonstrations, on stock upstream lerobot."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Same lerobot as the eval client (openarm_gripette_simu[eval]): training
+    # and inference must rebuild the same processor pipeline.
+    "lerobot[training]==0.6.0",
+    # The chunk-relative steps live here; a trained checkpoint cannot be
+    # loaded without importing them.
+    "grabette-chunkrel",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv.sources]
+grabette-chunkrel = { path = "../../libs/grabette-chunkrel", editable = true }
+
+[tool.uv]
+package = false
