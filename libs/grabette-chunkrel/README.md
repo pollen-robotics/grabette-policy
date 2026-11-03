@@ -44,6 +44,7 @@ rotation and invalidated the first three robot runs; the tests pin this.
 |---|---|---|
 | Stats | `grabette_dataset_tools.chunk_relative_stats.write_relative_action_stats` | deltas |
 | Training | `GRABETTE_CHUNK_RELATIVE=1` (`policies/Pi05/train.py`) | off |
+| Training (ACT) | always (`policies/ACT/train.py`) | on |
 | Gate | `smoke_generation.py --chunk_relative` | off |
 | Eval | `evaluate.py --chunk_relative auto\|on\|off` | auto (reads the checkpoint) |
 | Serving | Ficelle branch `chunk-relative-steps` (needs this package installed) | — |

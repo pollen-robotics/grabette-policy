@@ -16,13 +16,14 @@ LeRobot datasets by the SLAM pipeline
 | [`libs/grabette-attention`](libs/grabette-attention) | Offline attention maps and view-ablation diagnostics |
 | [`policies/DiffusionPolicy`](policies/DiffusionPolicy) | Diffusion Policy data prep and training (own `uv.lock`) |
 | [`policies/Pi05`](policies/Pi05) | Pi0.5 fine-tuning (own `uv.lock`) |
+| [`policies/ACT`](policies/ACT) | ACT training with chunk-relative actions (own `uv.lock`) |
 | [`robots/openarm`](robots/openarm) | OpenArm-Gripette: model, MuJoCo sim, real-arm driver, teleop bridge |
 
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/). `libs/*` and
-`robots/openarm/*` form one uv workspace with a single lock; DiffusionPolicy
-and Pi05 are standalone projects with their own lock.
+`robots/openarm/*` form one uv workspace with a single lock; DiffusionPolicy,
+Pi05 and ACT are standalone projects with their own lock.
 
 ```bash
 uv sync --all-packages                       # the workspace
