@@ -91,6 +91,15 @@ def test_check_act_config_rejects_wrong_action_dim():
         tr.check_act_config(act_cfg(action_dim=11))
 
 
+def test_check_act_config_rejects_missing_state():
+    """Datasets older than generate_dataset.py's observation.state would
+    otherwise fail deep in ACT's forward with a bare KeyError."""
+    cfg = act_cfg()
+    del cfg.input_features["observation.state"]
+    with pytest.raises(RuntimeError, match="observation.state"):
+        tr.check_act_config(cfg)
+
+
 def test_check_act_config_rejects_other_policy():
     with pytest.raises(RuntimeError, match="act"):
         tr.check_act_config(DiffusionConfig())

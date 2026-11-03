@@ -74,6 +74,11 @@ def check_act_config(policy_cfg):
             "temporal ensembling is not supported with chunk-relative actions: it "
             "averages chunks expressed relative to different reference poses."
         )
+    if "observation.state" not in policy_cfg.input_features:
+        raise RuntimeError(
+            "ACT needs observation.state (the 2-D gripper pair); this dataset has "
+            "none. It predates generate_dataset.py emitting it: add it as action[6:8]."
+        )
     shape = tuple(policy_cfg.output_features["action"].shape)
     if shape != (_ACTION_DIM,):
         raise RuntimeError(
