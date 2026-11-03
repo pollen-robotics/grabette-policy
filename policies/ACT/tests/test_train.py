@@ -121,6 +121,36 @@ def test_fresh_pipeline_passthrough_when_pretrained(tmp_path):
     assert names(pre2).count("ChunkRelativeActionsStep") == 1
 
 
+def _saved_chunkrel_pipeline(tmp_path):
+    pre, post = tr._fresh_pipeline(act_cfg(), dataset_stats=stats())
+    pre.save_pretrained(str(tmp_path))
+    post.save_pretrained(str(tmp_path))
+
+
+def test_pretrained_path_checks_stats_lerobot_overrides_with(tmp_path):
+    """On resume/fine-tune lerobot swaps the saved normaliser stats for the
+    current dataset's (normalizer_processor override): those must be checked too."""
+    _saved_chunkrel_pipeline(tmp_path)
+    overrides = {"normalizer_processor": {"stats": stats(chunk_size=None)}}
+    with pytest.raises(RuntimeError, match="write_relative_action_stats"):
+        tr._fresh_pipeline(act_cfg(), pretrained_path=str(tmp_path),
+                           preprocessor_overrides=overrides)
+
+
+def test_pretrained_path_checks_config(tmp_path):
+    _saved_chunkrel_pipeline(tmp_path)
+    cfg = act_cfg(temporal_ensemble_coeff=0.01, n_action_steps=1)
+    with pytest.raises(RuntimeError, match="temporal"):
+        tr._fresh_pipeline(cfg, pretrained_path=str(tmp_path), dataset_stats=stats())
+
+
+def test_remote_job_is_refused():
+    """--job.target hands training to a pod running plain lerobot-train,
+    without this wrapper: it would train on absolute actions with relative stats."""
+    with pytest.raises(RuntimeError, match="hf jobs uv run"):
+        tr.lerobot_train.submit_to_hf(None)
+
+
 def test_fresh_pipeline_rejects_pretrained_without_steps(tmp_path):
     cfg = act_cfg()
     pre, post = make_act_pre_post_processors(

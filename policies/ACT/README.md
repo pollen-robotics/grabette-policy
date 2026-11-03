@@ -24,7 +24,7 @@ Write the chunk-relative action stats for the chunk size you will train with:
 uv run --project ../../libs/grabette-dataset-tools python -c "from pathlib import Path; from grabette_dataset_tools.chunk_relative_stats import write_relative_action_stats as w; w(Path('<dataset root>'), chunk_size=50)"
 ```
 
-**2. Train.** All `lerobot-train` flags work:
+**2. Train.** All `lerobot-train` flags work except `--job.target` (use `hf jobs uv run`, below):
 
 ```bash
 uv run python train.py --policy.type=act --policy.chunk_size=50 \
@@ -48,7 +48,9 @@ uv run --project ../../robots/openarm/openarm_gripette_simu --extra eval \
 - Stats that are not chunk-relative, or were computed for another `chunk_size`.
 - An action that is not 8-D, or a dataset without `observation.state`.
 - `--policy.temporal_ensemble_coeff`: it averages chunks with different reference poses.
-- Resuming/fine-tuning from a checkpoint that was not trained with this launcher.
+- Resuming/fine-tuning from a checkpoint that was not trained with this launcher
+  (a stock ACT checkpoint cannot be fine-tuned this way). The stats and config
+  checks also run when resuming or fine-tuning.
 
 Use `n_action_steps` ≥ 40: short horizons replay per-step noise as jitter.
 

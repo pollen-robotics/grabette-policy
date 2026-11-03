@@ -18,7 +18,8 @@ Before building the pipeline it refuses, rather than silently training wrong:
   - a non-8-D action (the 11-D per-step-delta datasets from convert_dataset.py);
   - temporal ensembling (it averages chunks with different reference poses).
 
-All lerobot-train flags work unchanged.
+All lerobot-train flags work unchanged, except --job.target (refused: the remote
+job would run stock lerobot-train; use `hf jobs uv run` as below).
 
 Usage (full recipe in README.md):
   uv run python train.py --policy.type=act --policy.chunk_size=50 \\
@@ -97,6 +98,12 @@ def _fresh_pipeline(policy_cfg, pretrained_path=None, pretrained_revision=None, 
         insert_chunk_relative,
     )
 
+    check_act_config(policy_cfg)
+    # On resume/fine-tune lerobot replaces the saved normaliser stats with the
+    # current dataset's (normalizer_processor override), so check those.
+    override = (kwargs.get("preprocessor_overrides") or {}).get("normalizer_processor", {})
+    check_relative_stats(kwargs.get("dataset_stats") or override.get("stats"), policy_cfg.chunk_size)
+
     if pretrained_path is not None:
         # Resume or fine-tune: the saved pipeline already carries the steps.
         pre, post = _original(policy_cfg, pretrained_path=pretrained_path,
@@ -108,15 +115,25 @@ def _fresh_pipeline(policy_cfg, pretrained_path=None, pretrained_revision=None, 
             )
         return pre, post
 
-    check_act_config(policy_cfg)
-    check_relative_stats(kwargs.get("dataset_stats"), policy_cfg.chunk_size)
     pre, post = _original(policy_cfg, **kwargs)
     return insert_chunk_relative(pre, post)
+
+
+def _refuse_remote(cfg):
+    # --job.target makes lerobot-train submit a pod that runs PLAIN
+    # lerobot-train, without this wrapper or grabette-chunkrel: it would train
+    # on absolute actions normalised with relative stats, silently.
+    raise RuntimeError(
+        "--job.target is not supported: the remote job would run stock lerobot-train "
+        "without the chunk-relative steps. Use `hf jobs uv run ... --with "
+        "<grabette-chunkrel> train.py` instead (see README.md)."
+    )
 
 
 # Patch both the factory and the reference lerobot_train imported.
 policy_factory.make_pre_post_processors = _fresh_pipeline
 lerobot_train.make_pre_post_processors = _fresh_pipeline
+lerobot_train.submit_to_hf = _refuse_remote
 
 if __name__ == "__main__":
     lerobot_train.main()
