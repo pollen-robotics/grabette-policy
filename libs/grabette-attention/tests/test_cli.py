@@ -49,6 +49,13 @@ def test_explicit_frame_indices_are_accepted():
     assert args.frames == ["12", "40"]
 
 
+def test_a_bare_frames_flag_is_a_parser_error_not_an_empty_selection():
+    # `--frames` with nothing after it used to parse to [], which analysed no
+    # frame at all and wrote an empty summary.
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--checkpoint", "c", "--dataset", "d", "--frames"])
+
+
 def test_giving_neither_input_is_rejected():
     with pytest.raises(SystemExit):
         main(["--checkpoint", "user/m"])
