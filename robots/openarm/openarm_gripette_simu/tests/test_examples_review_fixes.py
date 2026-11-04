@@ -75,3 +75,20 @@ def test_cube_frame_of_a_normal_episode_is_unchanged():
     mod = _load("replay_dataset")
     acts = _episode([(0.0, 25), (-0.9, 20)])
     assert mod.pick_cube_frame(acts) == 25
+
+
+# ── EV-13: the IK-filter summary is per PLANNED episode, not per request ───
+
+def test_ik_drop_rate_is_bounded_by_the_attempts():
+    """--episodes 100 needing 130 plans (physics failures force extra ones)
+    with 40 IK drops: 40/130 dropped, not 40/100 — and never above 100%."""
+    mod = _load("collect_grasp_dataset")
+    n_planned, avg_accepted, drop_rate = mod.ik_filter_summary(
+        n_plans=130, n_ik_dropped=40, ik_attempts_total=40 * 200 + 90 * 3,
+        max_ik_attempts=200)
+    assert n_planned == 90
+    assert avg_accepted == pytest.approx(3.0)
+    assert drop_rate == pytest.approx(100.0 * 40 / 130)
+    _n, _a, worst = mod.ik_filter_summary(n_plans=150, n_ik_dropped=150,
+                                          ik_attempts_total=150 * 200, max_ik_attempts=200)
+    assert worst == pytest.approx(100.0)
