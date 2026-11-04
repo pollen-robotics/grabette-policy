@@ -2,6 +2,7 @@
 
 import numpy as np
 from openarm_gripette_simu.proto import arm_pb2
+from openarm_gripette_simu.rotation import rotation_6d_to_matrix
 
 IDENTITY_R6D = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
@@ -37,6 +38,22 @@ def test_first_command_is_jump_guarded(make_servicer, fake_arm, kin):
     resp = s.SendCartesianDelta(arm_pb2.CartesianDelta(dx=0.0, dy=0.0, dz=0.0, dr6d=IDENTITY_R6D), None)
     assert not resp.success
     assert s._latest_target_joints is None  # nothing handed to the interpolator
+
+
+# RA-13: on the latching violation the target is re-synced to FK(measured),
+# but the rollback then still subtracted the rejected delta from that FRESH
+# target, leaving it offset by the delta (10 mm here).
+def test_latch_resync_matches_fk(make_servicer, fake_arm, kin):
+    s = make_servicer(fake_arm, max_ik_jump_violations=1)
+    s._latest_target_joints = fake_arm.q.copy()  # a previous command was accepted
+    s._kin = JumpKin(kin, _flip(fake_arm.q))
+    rotated = [0.0, 1.0, 0.0, -1.0, 0.0, 0.0]  # 90 deg about z, also rejected
+    resp = s.SendCartesianDelta(arm_pb2.CartesianDelta(dx=0.01, dy=0.0, dz=0.0, dr6d=rotated), None)
+    assert not resp.success
+    assert not s._interp_enabled  # latched
+    fk = kin.forward(fake_arm.get_positions())
+    np.testing.assert_allclose(s._target_pos, fk[:3, 3], atol=1e-6)
+    np.testing.assert_allclose(rotation_6d_to_matrix(s._target_r6d), fk[:3, :3], atol=1e-6)
 
 
 def test_first_small_command_still_accepted(make_servicer, fake_arm):

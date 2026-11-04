@@ -450,11 +450,15 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
                                 f"FK pose for safety."
                             )
                             self._interp_enabled = False
+                            # Fresh target = FK(measured); the rejected delta
+                            # was never applied to it, so no rollback here
+                            # (subtracting it would offset the synced target).
                             self._sync_target_from_robot()
-                        # Undo this Cartesian delta on the integrator so we don't
-                        # leak it into the next step's cumulative target.
-                        self._target_pos -= delta_pos_world
-                        self._target_r6d = rotation_matrix_to_6d(R_target).copy()
+                        else:
+                            # Undo this Cartesian delta on the integrator so we don't
+                            # leak it into the next step's cumulative target.
+                            self._target_pos -= delta_pos_world
+                            self._target_r6d = rotation_matrix_to_6d(R_target).copy()
                         return arm_pb2.ArmCommandResponse(
                             success=False,
                             error=f"IK jump on '{bad_name}': "
