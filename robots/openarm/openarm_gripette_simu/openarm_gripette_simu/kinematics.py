@@ -25,6 +25,24 @@ ROLL_JOINT = "r_wrist_roll"
 MIMIC_JOINT = "r_wrist_roll_mimic"
 MIMIC_RATIO = -1.0
 
+# Hard roll limit used by IK (rad). The real driver clips joint_6 (= r_wrist_roll)
+# to +/-40 deg (RIGHT_DEFAULT_JOINTS_LIMITS in openarm_gripette's
+# config_openarm7_follower.py), tighter than the URDF's +/-44.9 deg. IK must stay
+# inside the DRIVER range, else the driver silently clips the command and the arm
+# is not where IK thinks it is. 3 deg margin so IK never parks on the stop.
+ROLL_IK_LIMIT = np.radians(40.0 - 3.0)
+
+# Weight of the soft posture task pulling roll toward 0. Roll stays free (IK uses
+# it whenever the frame task needs it); this only brings it back when it is not
+# needed, instead of leaving it wherever the last motion parked it. Placo's
+# regularization task does NOT do this: it penalises the step dq, not the
+# position, so without this task roll drifts and ends up on its limit.
+# 1e-3 measured (2026-11-04): when a target is reachable without roll (the
+# square, small random walks from home) roll stays exactly 0, i.e. today's
+# behaviour; when it needs roll, IK uses it at full accuracy (sim home resets
+# 10/40 -> 26/40). 1e-2 and above start trading pose accuracy for posture.
+ROLL_POSTURE_WEIGHT = 1e-3
+
 # Frame names
 CAMERA_FRAME = "camera"
 GRIPPER_FRAME = "gripper_center"
@@ -51,7 +69,8 @@ class Kinematics:
     """Placo wrapper for FK/IK on the OpenArm right arm."""
 
     def __init__(self, model_dir=None, position_weight: float = 100.0,
-                 orientation_weight: float = 1.0):
+                 orientation_weight: float = 1.0,
+                 roll_posture_weight: float = ROLL_POSTURE_WEIGHT):
         """
         Args:
             model_dir: URDF dir (defaults to OPENARM_RIGHT_DIR).
@@ -60,9 +79,14 @@ class Kinematics:
                 lock rotation more strictly near the home wrist-roll singularity:
                 the ~16cm oak_l→finger lever amplifies oak_l rotation error into a
                 grasp-point miss. The default 1 keeps position-only priority.
+            roll_posture_weight: weight of the soft task pulling r_wrist_roll
+                toward 0 (see ROLL_POSTURE_WEIGHT). 0 disables it.
         """
         model_dir = str(model_dir) if model_dir else str(OPENARM_RIGHT_DIR)
         self.robot = placo.RobotWrapper(model_dir)
+
+        # Hard roll limit = driver range minus margin (see ROLL_IK_LIMIT).
+        self.robot.set_joint_limits(ROLL_JOINT, -ROLL_IK_LIMIT, ROLL_IK_LIMIT)
 
         # Set up the IK solver
         self.solver = self.robot.make_solver()
@@ -90,6 +114,12 @@ class Kinematics:
 
         # Small regularization keeps the QP full-rank (min-velocity solution).
         self.solver.add_regularization_task(1e-4)
+
+        # Soft posture task: roll is free, but drifts back to 0 when unused.
+        if roll_posture_weight > 0:
+            self._roll_posture = self.solver.add_joints_task()
+            self._roll_posture.set_joints({ROLL_JOINT: 0.0})
+            self._roll_posture.configure("roll_posture", "soft", roll_posture_weight)
 
         # Frame task on camera, with position weighted 100x higher than
         # orientation. Equal weighting (the previous default) caused the QP

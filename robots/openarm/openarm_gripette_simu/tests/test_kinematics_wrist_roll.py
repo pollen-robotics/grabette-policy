@@ -15,6 +15,7 @@ from openarm_gripette_model import OPENARM_RIGHT_XML
 from openarm_gripette_simu.kinematics import (
     ARM_JOINT_NAMES,
     CONTROL_FRAME,
+    ROLL_IK_LIMIT,
     Kinematics,
 )
 
@@ -107,6 +108,35 @@ def test_ik_round_trip_with_roll(kin, mj):
         rot_err = _rot_err_deg(T[:3, :3], T_star[:3, :3])
         assert pos_err < 1e-3, f"q*={q_star}: pos err {pos_err * 1e3:.2f} mm"
         assert rot_err < 0.5, f"q*={q_star}: rot err {rot_err:.3f} deg"
+
+
+def test_ik_roll_stays_inside_driver_limit(kin, mj):
+    """The real driver clips joint_6 to +/-40 deg. A target that needs MORE roll
+    than that must not make IK command past ROLL_IK_LIMIT (it uses the other
+    joints instead)."""
+    model, data = mj
+    assert np.degrees(ROLL_IK_LIMIT) <= 40.0
+    q_star = np.array([0.3, 0.1, 0.0, 1.2, 0.0, 0.0, 0.3])
+    q_star[ROLL_IDX] = 0.78            # URDF-legal, beyond the driver range
+    T_star = _mujoco_site_pose(model, data, q_star, CONTROL_FRAME)
+    q = kin.inverse(T_star, current_joint_positions=q_star, frame=CONTROL_FRAME)
+    assert abs(q[ROLL_IDX]) <= ROLL_IK_LIMIT + 1e-6, np.degrees(q[ROLL_IDX])
+
+
+def test_ik_brings_unneeded_roll_back_toward_zero(kin, mj):
+    """Seeded with roll = 0.5 on a target reachable with roll = 0, IK should
+    still reach the pose AND return roll toward 0 (soft posture task), instead
+    of leaving it where the seed parked it."""
+    model, data = mj
+    q_star = np.array([0.3, 0.1, 0.0, 1.2, 0.0, 0.0, 0.3])
+    T_star = _mujoco_site_pose(model, data, q_star, CONTROL_FRAME)
+    seed = q_star.copy()
+    seed[ROLL_IDX] = 0.5
+    q = kin.inverse(T_star, current_joint_positions=seed, frame=CONTROL_FRAME)
+    T = _mujoco_site_pose(model, data, q, CONTROL_FRAME)
+    assert np.linalg.norm(T[:3, 3] - T_star[:3, 3]) < 1e-3
+    assert _rot_err_deg(T[:3, :3], T_star[:3, :3]) < 0.5
+    assert abs(q[ROLL_IDX]) < 0.1, np.degrees(q[ROLL_IDX])
 
 
 def test_ik_keeps_mimic_coupled(kin):
