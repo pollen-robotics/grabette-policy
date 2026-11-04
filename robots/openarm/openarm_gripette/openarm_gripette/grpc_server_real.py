@@ -260,16 +260,22 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
             if self._interp_enabled:
                 target = self._latest_target_joints  # atomic read (ref assignment)
                 if target is not None:
-                    if self._current_cmd_joints is None:
-                        self._current_cmd_joints = self._arm.get_positions()
-                    # next = cur + alpha * (target - cur)
-                    self._current_cmd_joints = self._current_cmd_joints + self._interp_alpha * (
-                        target - self._current_cmd_joints
-                    )
+                    # One try around the WHOLE tick: an uncaught CAN read
+                    # error (or SetTorque clearing _current_cmd_joints mid-
+                    # tick) would otherwise kill this thread silently while
+                    # SendCartesianDelta keeps returning success.
                     try:
-                        self._arm.send_command_rad(self._current_cmd_joints)
+                        # Local copy: SetTorque(False) may set the attribute
+                        # to None between the check and the arithmetic.
+                        cur = self._current_cmd_joints
+                        if cur is None:
+                            cur = self._arm.get_positions()
+                        # next = cur + alpha * (target - cur)
+                        cur = cur + self._interp_alpha * (target - cur)
+                        self._current_cmd_joints = cur
+                        self._arm.send_command_rad(cur)
                     except Exception as e:
-                        logger.warning(f"Interp motor write failed: {e}")
+                        logger.warning(f"Interp tick failed: {e}")
             elapsed = time.monotonic() - tick
             sleep_for = period - elapsed
             if sleep_for > 0:
