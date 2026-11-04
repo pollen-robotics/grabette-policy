@@ -100,6 +100,26 @@ def test_the_inverse_uses_an_explicitly_set_reference():
     assert torch.allclose(out[0, :, :3], torch.tensor([1.0, 2.0, 3.0]), atol=1e-5)
 
 
+@pytest.mark.parametrize("fwd_batch, inv_batch", [(2, 4), (4, 2)])
+def test_inverse_batch_mismatch_raises(fwd_batch, inv_batch):
+    """DT-2: the paired references belong to the LAST forward batch. Decoding a
+    batch of another size used to zip-truncate (4 chunks against 2 references
+    returned 2 — samples silently dropped) or pair chunks with the wrong poses."""
+    fwd = ChunkRelativeActionsStep()
+    inv = AbsoluteFromChunkRelativeStep(relative_step=fwd)
+    fwd(transition(make_batch(b=fwd_batch)))
+    rel = ChunkRelativeActionsStep()(transition(make_batch(b=inv_batch, seed=1)))
+    with pytest.raises(ValueError, match="batch"):
+        inv(transition(rel[TransitionKey.ACTION]))
+
+
+def test_explicit_batched_reference_mismatch_raises():
+    inv = AbsoluteFromChunkRelativeStep()
+    inv.set_reference(np.zeros((2, 6), dtype=np.float32))
+    with pytest.raises(ValueError, match="batch"):
+        inv(transition(torch.zeros(3, 5, 8)))
+
+
 def test_the_inverse_refuses_to_guess_a_reference():
     """Silently assuming the origin would offset every commanded pose."""
     inv = AbsoluteFromChunkRelativeStep()

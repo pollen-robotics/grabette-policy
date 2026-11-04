@@ -165,6 +165,14 @@ class AbsoluteFromChunkRelativeStep(ProcessorStep):
                 "no reference pose available: set_reference() with the robot's "
                 "measured pose, or pair this step with a ChunkRelativeActionsStep"
             )
+        # One reference per chunk. The paired references belong to the LAST
+        # forward batch; a different batch size means they are someone else's,
+        # and zip() below would silently drop samples or mis-pair them.
+        if ref.shape[0] != act.shape[0]:
+            raise ValueError(
+                f"reference batch {ref.shape[0]} != action batch {act.shape[0]}: "
+                "the reference does not belong to these chunks"
+            )
 
         arr = act.detach().cpu().numpy().astype(np.float64)
         ref_np = ref.detach().cpu().numpy().astype(np.float64)
