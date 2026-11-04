@@ -67,6 +67,14 @@ def _select(
         wanted_layers = {l for _, l in captures}
     else:
         wanted_layers = set(layers)
+        # Every requested layer must exist: dropping the missing ones would
+        # reduce a different set than the one provenance records.
+        unknown = wanted_layers - {l for _, l in captures}
+        if unknown:
+            raise ValueError(
+                f"layers {sorted(unknown)} were not captured; captured layers "
+                f"are {sorted({l for _, l in captures})}"
+            )
 
     chosen = [
         w for (s, l), w in captures.items()

@@ -140,6 +140,16 @@ def test_layers_can_be_restricted_to_a_subset():
     assert cams["cam0"].grid.max() == pytest.approx(3.0)
 
 
+def test_an_out_of_range_layer_is_rejected_not_silently_dropped():
+    # 18 layers captured; asking for [0, 99] used to reduce layer 0 alone
+    # while provenance still recorded "0,99".
+    with pytest.raises(ValueError, match="99"):
+        reduce_attention(
+            captures(1, steps=1, layers=18), layout(1), GEOM, patch=PATCH,
+            layers=[0, 99],
+        )
+
+
 def test_a_hot_patch_lands_at_the_right_grid_cell():
     # Token 5*16+3 of cam0 is grid row 5, col 3; after cropping 2 pad rows it
     # must appear at row 3.

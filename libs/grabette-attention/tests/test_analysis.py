@@ -224,11 +224,13 @@ def test_no_usable_camera_raises_without_running_the_model():
 def test_provenance_always_records_what_was_actually_computed():
     # Even if caller passes provenance with denoise_step/layers, the actual
     # values used take precedence (unconditional assignment, not setdefault).
+    # FakeAdapter captures layer 0 only; requesting an uncaptured layer is now
+    # an error rather than silently dropped (see test_reduce).
     result = analyse_frame(
         FakeAdapter(), observation(),
-        denoise_step="first", layers=[0, 1],
+        denoise_step="first", layers=[0],
         provenance={"denoise_step": "wrong", "layers": "wrong", "model": "v1"},
     )
     assert result.provenance["denoise_step"] == "first"
-    assert result.provenance["layers"] == "[0, 1]"
+    assert result.provenance["layers"] == "[0]"
     assert result.provenance["model"] == "v1"  # caller values preserved
