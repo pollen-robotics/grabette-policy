@@ -51,6 +51,18 @@ def test_init_failure_after_connect_disables_and_disconnects(mocked_main, monkey
     follower.disconnect.assert_called_once()
 
 
+# RA-14: ArmServicer's max_target_lead_mm default (50) drifted from the CLI /
+# README default (80) that the real arm actually runs with.
+def test_servicer_defaults_match_cli(monkeypatch):
+    import inspect
+
+    monkeypatch.setattr(sys, "argv", ["grpc_server_real"])
+    args = srv.parse_args()
+    params = inspect.signature(srv.ArmServicer.__init__).parameters
+    for name in ("interp_hz", "interp_alpha", "max_ik_jump_deg", "max_ik_jump_violations", "max_target_lead_mm"):
+        assert params[name].default == getattr(args, name), name
+
+
 def test_normal_shutdown_disables_and_disconnects(mocked_main):
     follower, server = mocked_main
     srv.main()  # wait_for_termination raises KeyboardInterrupt -> clean shutdown

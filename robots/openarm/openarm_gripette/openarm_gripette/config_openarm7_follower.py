@@ -84,7 +84,9 @@ class OpenArm7FollowerConfigBase(OpenArmFollowerConfigBase):
         default_factory=lambda: [5.0, 5.0, 3.0, 5.0, 0.3, 0.3, 0.3]
     )
 
-    # Safe default joint limits. Override via CLI or set config.side='left'/'right'.
+    # Safe default joint limits. Setting config.side='left'/'right' REPLACES
+    # these (and any custom joint_limits) with the side defaults above, same
+    # as upstream OpenArmFollower; keep side=None to use custom limits.
     joint_limits: dict[str, tuple[float, float]] = field(
         default_factory=lambda: {
             "joint_1": (-5.0, 5.0),
@@ -104,14 +106,14 @@ class OpenArm7FollowerConfigBase(OpenArmFollowerConfigBase):
     # (no flip), preserving identical behavior to upstream.
     #
     # Per-robot overrides: each physical OpenArm may have different motor
-    # wiring directions. Set per-robot via the `grpc_server_real.py` CLI flag
-    # `--flip_joint_signs joint_7` (etc.), or by constructing the config
-    # programmatically. Do NOT bake your robot's specific flips into this
-    # default — that breaks portability to other robots / sim.
+    # wiring directions. Set per-robot by constructing the config
+    # programmatically (grpc_server_real.py has NO CLI flag for this). Do NOT
+    # bake your robot's specific flips into this default — that breaks
+    # portability to other robots / sim.
     #
     # Example: if commanded joint_7=+30° physically rotates the wrist
-    # opposite to URDF's +Z axis on YOUR specific arm, pass
-    # `--flip_joint_signs joint_7` to the server.
+    # opposite to URDF's +Z axis on YOUR specific arm, set
+    # `config.joint_signs["joint_7"] = -1.0`.
     joint_signs: dict[str, float] = field(
         default_factory=lambda: {
             "joint_1": +1.0,

@@ -181,7 +181,7 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         interp_alpha: float = 0.3,
         max_ik_jump_deg: float = 15.0,
         max_ik_jump_violations: int = 2,
-        max_target_lead_mm: float = 50.0,
+        max_target_lead_mm: float = 80.0,  # keep in sync with --max_target_lead_mm
     ):
         self._arm = arm
         self._kin = kin

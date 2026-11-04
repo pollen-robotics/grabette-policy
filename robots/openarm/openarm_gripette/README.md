@@ -182,7 +182,7 @@ robot:
 - Manual control:
   ```bash
   uv run python examples/set_arm_torque.py --arm_addr <robot-ip>:50052 --off   # arm falls!
-  uv run python examples/set_arm_torque.py --arm_addr <robot-ip>:50052 --on    # enabled but limp — Reset to home next
+  uv run python examples/set_arm_torque.py --arm_addr <robot-ip>:50052 --on    # enabled, holds the current pose
   ```
 - Stopping the **server** (Ctrl+C) also disables torque on disconnect. The Damiao disable frames are fire-and-forget (a motor that misses one silently stays powered), so the server sends a redundant double-pass; if a joint still holds torque after the server is gone, run the direct-CAN software e-stop **on the CAN machine, with the server stopped**:
   ```bash
