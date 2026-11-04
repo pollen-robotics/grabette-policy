@@ -5,6 +5,7 @@ fake objects, because train.py must stay a single uploadable file.
 """
 
 import importlib.util
+import json
 import re
 from pathlib import Path
 
@@ -128,3 +129,43 @@ def test_net_motion_over_executed_window_for_deltas(capsys):
     assert m, out
     assert float(m.group(1)) == pytest.approx(42.45, abs=0.1)
     assert float(m.group(2)) == pytest.approx(42.45, abs=0.1)
+
+
+# ── TR-11: the best tracker survives --resume ───────────────────────────
+
+def _ckpt_with_best(root, step, loss):
+    d = root / f"{step:06d}"
+    (d / "pretrained_model").mkdir(parents=True)
+    (d / "pretrained_model" / "model.safetensors").write_bytes(b"x")
+    (d / "grabette_best.json").write_text(json.dumps({"step": step, "eval_loss": loss}))
+    return d
+
+
+def test_keeper_seeds_from_the_pre_resume_best(tmp_path):
+    best = _ckpt_with_best(tmp_path, 1000, 0.05)
+    (tmp_path / "last").symlink_to(best.name)          # lerobot's pointer
+    k = ck.BestCheckpointKeeper()
+    k.seed_from(tmp_path)
+    assert (k.best_step, k.best_loss, k.best_dir) == (1000, 0.05, best)
+    worse = tmp_path / "002000"
+    (worse / "pretrained_model").mkdir(parents=True)
+    k.offer(worse, 2000, 0.08, 10000)
+    assert k.best_step == 1000, "a worse post-resume eval replaced the best"
+    assert best.exists()
+
+
+def test_save_hook_does_not_push_a_worse_best_after_resume(tmp_path, monkeypatch):
+    """The Hub push is what overwrote <repo>_best; it must not fire."""
+    root = tmp_path / "checkpoints"
+    _ckpt_with_best(root, 1000, 0.05)
+    new = root / "002000"
+    (new / "pretrained_model").mkdir(parents=True)
+    pushed = []
+    monkeypatch.setattr(ck, "_KEEPER", ck.BestCheckpointKeeper())
+    monkeypatch.setattr(ck, "_orig_save_checkpoint", lambda *a, **k: None)
+    monkeypatch.setattr(ck, "_upload_best", lambda *a: pushed.append(a))
+    monkeypatch.setitem(ck._BASE_REPO, "id", "u/m")
+    monkeypatch.setitem(ck._EVAL_STATE, "step", 2000)
+    monkeypatch.setitem(ck._EVAL_STATE, "loss", 0.08)
+    ck._save_checkpoint(new, 2000, None)
+    assert pushed == []

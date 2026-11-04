@@ -389,6 +389,31 @@ class BestCheckpointKeeper:
         self.best_dir: Path | None = None
         self._prunable: Path | None = None
         self._warned = False
+        self._seeded = False
+
+    def seed_from(self, checkpoints_root: Path) -> None:
+        """Pick up the best recorded BEFORE a --resume=true restart.
+
+        Without this the tracker restarts at inf, so the first post-resume
+        eval is always "best" and is pushed over a better pre-resume
+        <repo>_best on the Hub. The pre-resume best is the directory holding
+        the lowest `grabette_best.json` (lerobot's `last` symlink is skipped:
+        best_dir must be the real path, or a later prune could hit it).
+        """
+        self._seeded = True
+        for rec in sorted(Path(checkpoints_root).glob("*/grabette_best.json")):
+            if rec.parent.is_symlink():
+                continue
+            try:
+                d = json.loads(rec.read_text())
+                step, loss = int(d["step"]), float(d["eval_loss"])
+            except (OSError, ValueError, KeyError):
+                continue
+            if loss < self.best_loss:
+                self.best_loss, self.best_step, self.best_dir = loss, step, rec.parent
+        if self.best_dir is not None:
+            logger.info("[best] resumed tracker: step %d (eval_loss=%.4f)",
+                        self.best_step, self.best_loss)
 
     def offer(self, checkpoint_dir: Path, step: int, loss: float | None,
               final_step: int | None) -> None:
@@ -543,6 +568,10 @@ def _save_checkpoint(*args, **kwargs):
     cfg = kwargs.get("cfg", args[2] if len(args) > 2 else None)
     if ckpt_dir is None or step is None:
         return
+    if not _KEEPER._seeded:
+        # First save of this process: on --resume=true the sibling checkpoint
+        # dirs carry the pre-resume best (a fresh run has none, so no-op).
+        _KEEPER.seed_from(Path(str(ckpt_dir)).parent)
     loss = _EVAL_STATE["loss"] if _EVAL_STATE["step"] == step else None
     if loss is not None and loss < _KEEPER.best_loss:
         # Upload NOW rather than at the end of training. The checkpoint has just
