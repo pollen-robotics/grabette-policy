@@ -98,3 +98,38 @@ def test_legacy_reset_keeps_the_cube_on_this_table(servicer, sim):
         assert r.success
         assert x0 < r.cube_x < x1 and y0 < r.cube_y < y1, (r.cube_x, r.cube_y)
         assert abs(r.cube_z - (top + half_h)) < 1e-3, r.cube_z
+
+
+# ── SimulationServer (in-process; gRPC is never started) ───────────────────
+
+@pytest.fixture(scope="module")
+def server():
+    from openarm_gripette_simu.server import SimulationServer
+
+    srv = SimulationServer(scene_xml=SCENE)
+    srv._rng = np.random.default_rng(0)
+    return srv
+
+
+def _place_cube(sim, xyz):
+    m, d = sim.model, sim.data
+    j = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, "red_cube_joint")
+    a = m.jnt_qposadr[j]
+    d.qpos[a:a + 3] = xyz
+    d.qpos[a + 3:a + 7] = (1.0, 0.0, 0.0, 0.0)
+    mujoco.mj_forward(m, d)
+
+
+# ── SIM-4: arm-cube penetration counts as a colliding start ────────────────
+
+def test_arm_cube_penetration_is_a_collision(server):
+    from openarm_gripette_simu.kinematics import GRIPPER_FRAME
+
+    sim = server._sim
+    cube_bid = sim.model.body("red_cube").id
+    _place_cube(sim, (0.44, -0.25, 0.41))                 # on the table, out of the way
+    assert not server._arm_config_collides(START_JOINTS, cube_bid)   # baseline: free
+    grip = server._kin.forward(START_JOINTS, frame=GRIPPER_FRAME)[:3, 3]
+    _place_cube(sim, grip)                                # cube inside the jaws
+    assert server._arm_config_collides(START_JOINTS, cube_bid)
+    _place_cube(sim, (0.44, -0.142, 0.41))                # put it back for later tests

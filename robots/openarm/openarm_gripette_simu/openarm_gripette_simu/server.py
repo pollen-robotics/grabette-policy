@@ -199,8 +199,9 @@ class SimulationServer:
         """True if `arm_joints` puts the arm/gripper in penetrating contact with
         the environment. Arm-vs-arm contacts are disabled by the model's
         collision classes, so any penetration here is the robot hitting the
-        table/floor. The cube-on-table resting contact (body `cube_bid`) is
-        ignored."""
+        table/floor — or the cube. Only the cube's own resting contact with the
+        environment (table / world bodies) is ignored: an arm penetrating the
+        cube (body `cube_bid`) is a colliding start too."""
         m, d = self._sim.model, self._sim.data
         self._sim.reset_arm(arm_joints)
         mujoco.mj_forward(m, d)
@@ -210,7 +211,9 @@ class SimulationServer:
             b1 = m.geom(d.contact[c].geom1).bodyid[0]
             b2 = m.geom(d.contact[c].geom2).bodyid[0]
             if b1 == cube_bid or b2 == cube_bid:
-                continue
+                other = b2 if b1 == cube_bid else b1
+                if other == 0 or "table" in m.body(other).name:
+                    continue        # cube resting on the table / floor
             return True
         return False
 
