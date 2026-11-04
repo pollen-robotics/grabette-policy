@@ -18,9 +18,9 @@ in training. lerobot solves the same problem for its built-in step with
 `lerobot-edit-dataset --operation.relative_action true`; this is the equivalent
 for ours.
 
-pi05 normalises ACTION with QUANTILES, which needs `q01`/`q99` — keys lerobot's
-own `compute_stats` does not emit (see `augment_dataset_quantile_stats.py`). So
-those are computed here alongside min/max/mean/std.
+pi05 normalises ACTION with QUANTILES, which reads `q01`/`q99`. lerobot's own
+`compute_stats` does emit them (with q10/q50/q90), but over ABSOLUTE actions,
+so they are computed here, alongside min/max/mean/std, over relative ones.
 
 The stats depend on the CHUNK LENGTH: a 50-frame offset is larger than a
 15-frame one, so `--chunk-size` must match the policy's `chunk_size`.

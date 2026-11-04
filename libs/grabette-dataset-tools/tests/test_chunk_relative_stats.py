@@ -101,8 +101,8 @@ def test_relative_stats_bring_actions_into_range(tmp_path):
 
 
 def test_quantile_keys_are_present(tmp_path):
-    """pi05 refuses to train without q01/q99, and lerobot's compute_stats does
-    not emit them."""
+    """pi05 refuses to train without q01/q99, and the ones lerobot's
+    compute_stats emits describe the absolute actions."""
     root, _ = make_dataset(tmp_path)
     stats, _ = relative_action_stats(root, chunk_size=50)
     for k in ("min", "max", "mean", "std", "q01", "q99"):
