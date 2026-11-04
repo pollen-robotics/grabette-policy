@@ -617,7 +617,9 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "val_episodes.json").write_text(json.dumps(
-        {"val_episodes": val_episodes, "split": "stride", "val_ratio": args.val_ratio}))
+        {"val_episodes": val_episodes, "split": "stride", "val_ratio": args.val_ratio,
+         # provenance: pass the same list to ood_check/offline_eval --exclude_episodes
+         "exclude_episodes": sorted(args.exclude_episodes or [])}))
     print(f"  Val episodes (strided, saved to val_episodes.json): {val_episodes}")
 
     train_dataset = LeRobotDataset(
@@ -834,11 +836,20 @@ def main():
         print("\nPushing to HuggingFace Hub:")
         print(f"  final checkpoint  -> {final_repo}")
         print(f"  best checkpoint   -> {best_repo}")
+        from huggingface_hub import HfApi
+
+        def push_split(repo):
+            # The train/val split travels with the weights: offline_eval and
+            # ood_check read it from a Hub checkpoint instead of re-deriving it
+            # (which silently diverges with --exclude_episodes).
+            HfApi().upload_file(path_or_fileobj=str(output_dir / "val_episodes.json"),
+                                path_in_repo="val_episodes.json", repo_id=repo)
 
         # Push the final checkpoint
         policy.push_to_hub(final_repo, private=args.hub_private)
         preprocessor.push_to_hub(final_repo, private=args.hub_private)
         postprocessor.push_to_hub(final_repo, private=args.hub_private)
+        push_split(final_repo)
 
         # Push the best checkpoint (if it exists — training may have stopped before any eval)
         best_dir = output_dir / "best"
@@ -848,6 +859,7 @@ def main():
             best_policy.push_to_hub(best_repo, private=args.hub_private)
             best_pre.push_to_hub(best_repo, private=args.hub_private)
             best_post.push_to_hub(best_repo, private=args.hub_private)
+            push_split(best_repo)
             print(f"  best_val_loss:    {best_val_loss:.4f}")
 
         print("\nTo use on another machine:")

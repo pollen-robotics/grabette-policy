@@ -4,6 +4,7 @@ No dataset, no model, no GPU: the dataset metadata, the dataset, the policy, the
 processors and the DataLoader are all replaced, so `main()` runs its real loop
 (optimizer, resume bookkeeping, checkpoint cadence, validation) in milliseconds.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -31,6 +32,8 @@ LOG = Log()
 
 
 class FakePolicy(torch.nn.Module):
+    config = None   # only handed to the (faked) processor factory
+
     def __init__(self, *_a, **_k):
         super().__init__()
         self.w = torch.nn.Parameter(torch.ones(4))
@@ -209,3 +212,28 @@ def test_val_loss_does_not_consume_the_training_rng():
     torch.manual_seed(123)
     train.compute_val_loss(NoisyPolicy(), Ident(), loader, torch.device("cpu"))
     assert torch.equal(torch.rand(3), expected)
+
+
+# ── TR-13: the split is recorded and travels with the checkpoint ────────
+
+def test_val_episodes_json_records_exclusions(run_main):
+    run, out = run_main
+    run("--training_steps", "1", "--exclude_episodes", "7", "3")
+    rec = json.loads((out / "val_episodes.json").read_text())
+    assert rec["exclude_episodes"] == [3, 7]
+    assert 3 not in rec["val_episodes"] and 7 not in rec["val_episodes"]
+
+
+def test_split_is_pushed_with_both_checkpoints(run_main, monkeypatch):
+    uploads = []
+
+    class FakeApi:
+        def upload_file(self, **kw):
+            uploads.append((kw["repo_id"], kw["path_in_repo"]))
+
+    monkeypatch.setitem(sys.modules, "huggingface_hub", type("m", (), {"HfApi": FakeApi}))
+    monkeypatch.setattr(FakePolicy, "push_to_hub", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(Ident, "push_to_hub", lambda *a, **k: None, raising=False)
+    run, _ = run_main
+    run("--training_steps", "3", "--eval_freq", "1", "--push_to_hub", "u/m")
+    assert sorted(uploads) == [("u/m", "val_episodes.json"), ("u/m-best", "val_episodes.json")]

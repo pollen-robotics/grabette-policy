@@ -56,23 +56,30 @@ from offline_eval import load_policy
 
 def get_chunk(policy, pre, post, device, img_prev, img_now, state, n_samples):
     """Predicted action chunk for an observation pair, averaged over a few
-    diffusion samples to suppress sampling noise."""
+    diffusion samples to suppress sampling noise.
+
+    The pair is fed as ONE (1, n_obs_steps, ...) observation window through
+    predict_action_chunk. Calling select_action once per frame does not work:
+    the first call already generates the chunk from [img_prev, img_prev], and
+    the second only pops that queue, so img_now never conditioned anything
+    and the chunk started at action index 1.
+    """
+    n_obs = policy.config.n_obs_steps
+    frames = [img_prev, img_now][-n_obs:]
+    if len(frames) < n_obs:  # n_obs_steps > 2: pad with the oldest frame
+        frames = [frames[0]] * (n_obs - len(frames)) + frames
+    st = torch.as_tensor(state).float()
+    batch = {
+        "observation.state": st.expand(n_obs, -1).unsqueeze(0).to(device),
+        "observation.images.cam0": torch.stack(frames).unsqueeze(0).to(device),
+        "task": "pick",
+    }
     chunks = []
     for _ in range(n_samples):
-        policy.reset()
+        policy.reset()  # empty queues -> predict_action_chunk uses the batch as given
         with torch.no_grad():
-            for img in (img_prev, img_now):
-                batch = {
-                    "observation.state": torch.as_tensor(state).float().unsqueeze(0).to(device),
-                    "observation.images.cam0": img.unsqueeze(0).to(device),
-                    "task": "pick",
-                }
-                a0 = policy.select_action(pre(batch))
-        acts = [post(a0)]
-        q = policy._queues["action"]
-        while len(q):
-            acts.append(post(q.popleft()))
-        chunks.append(np.stack([a.squeeze(0).float().cpu().numpy() for a in acts]))
+            acts = post(policy.predict_action_chunk(pre(dict(batch))))
+        chunks.append(acts.squeeze(0).float().cpu().numpy())
     return np.mean(np.stack(chunks), axis=0)
 
 
