@@ -188,7 +188,7 @@ robot:
   ```bash
   uv run python examples/disable_all_motors_can.py --can_port can0
   ```
-  It also reports which motors ACK — a motor that never ACKs has a wiring/communication problem.
+  It also reports which motors answer and decodes each reply's status (disabled / still ENABLED / fault) — a motor that never answers has a wiring/communication problem.
 - None of this replaces the hardware e-stop — keep it within reach whenever the arm is powered.
 - `set_arm_torque.py --on` now **holds the current pose** (the interpolator target is set to the measured joints), so a hand-placed arm stays where you put it. Use with `evaluate.py --no_reset` to start an episode from a hand-chosen pose.
 
