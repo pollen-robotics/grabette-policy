@@ -69,18 +69,20 @@ Identical to the real [Gripette](https://github.com/pollen-robotics/grabette/tre
 
 | RPC | Description |
 |-----|-------------|
-| `SendCartesianDelta(dx, dy, dz, dr6d[6])` | Apply delta to end-effector pose (meters + 6D rotation). **Deltas are camera-LOCAL — see below.** |
-| `GetArmState` | Current camera-frame pose (xyz + r6d) and joint positions |
+| `SendCartesianDelta(dx, dy, dz, dr6d[6])` | Apply delta to the control-frame (`oak_l`) pose (meters + 6D rotation). **Deltas are LOCAL to the control frame — see below.** |
+| `GetArmState` | Current control-frame (`oak_l`) pose (xyz + r6d) and joint positions |
 | `Reset(joint_positions=[])` | Reset episode: randomize cube + arm (empty joints = random start) |
-| `GetSuccessStatus` | Returns `goal_reached` (cube touched) + displacement |
+| `GetSuccessStatus` | Returns `goal_reached` (cube **lifted** ≥ 5 cm above its start) + `cube_displacement` (the vertical lift, m) |
 | `Ping` | Health check |
 
 The 6D rotation representation (Zhou et al., CVPR 2019) matches the action space used by diffusion policies trained with LeRobot.
+Here it is the first two **rows** of the rotation matrix (`R[:2].ravel()`), not
+the columns — see `openarm_gripette_simu/rotation.py`.
 
-#### `SendCartesianDelta` is camera-local (integrator semantics)
+#### `SendCartesianDelta` is control-frame-local (integrator semantics)
 
 `(dx, dy, dz)` and `dr6d` are interpreted in the **integrator's current
-camera-frame target**, not in the world frame. The server maintains an
+control-frame (`oak_l`) target**, not in the world frame. The server maintains an
 internal `(_target_pos, _target_r6d)` initialized from FK on startup (and
 re-synced after `Reset`), and each call updates it as:
 

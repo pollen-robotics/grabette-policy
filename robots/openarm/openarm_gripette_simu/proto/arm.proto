@@ -2,14 +2,15 @@ syntax = "proto3";
 package openarm;
 
 service ArmService {
-  // Apply a delta Cartesian command to the arm end-effector
+  // Apply a delta Cartesian command to the control frame (oak_l), expressed
+  // in that frame (local deltas, integrator semantics)
   rpc SendCartesianDelta (CartesianDelta) returns (ArmCommandResponse);
-  // Read the current arm state (Cartesian pose + joint positions)
+  // Read the current arm state (control-frame pose + joint positions)
   rpc GetArmState (GetArmStateRequest) returns (ArmState);
   // Reset the episode: teleport arm + randomize cube
   // If joint_positions is empty, arm start is randomized too
   rpc Reset (ResetRequest) returns (ResetResponse);
-  // Check if the current episode goal is achieved (cube touched)
+  // Check if the current episode goal is achieved (cube lifted >= 5 cm)
   rpc GetSuccessStatus (SuccessStatusRequest) returns (SuccessStatusResponse);
   // Enable/disable motor torque. Real robot: Damiao enable/disable (disable =
   // motors freewheel, the arm FALLS under gravity). Simulator: no-op.
@@ -22,7 +23,7 @@ message CartesianDelta {
   float dx = 1;               // meters
   float dy = 2;               // meters
   float dz = 3;               // meters
-  repeated float dr6d = 4;    // 6 values: delta 6D rotation
+  repeated float dr6d = 4;    // 6 values: delta 6D rotation (first two ROWS of R)
 }
 
 message ArmCommandResponse {
@@ -36,7 +37,7 @@ message ArmState {
   float x = 1;                         // meters
   float y = 2;                         // meters
   float z = 3;                         // meters
-  repeated float r6d = 4;              // 6 values: current 6D rotation
+  repeated float r6d = 4;              // 6 values: current 6D rotation (first two ROWS of R)
   repeated float joint_positions = 5;  // 7 arm joint angles (rad)
 }
 
@@ -55,8 +56,8 @@ message ResetResponse {
 message SuccessStatusRequest {}
 
 message SuccessStatusResponse {
-  bool goal_reached = 1;           // true if cube was touched (moved from initial position)
-  float cube_displacement = 2;     // how far the cube moved (meters)
+  bool goal_reached = 1;           // true if the cube was lifted >= 5 cm above its start
+  float cube_displacement = 2;     // vertical lift of the cube above its start (meters)
 }
 
 message SetTorqueRequest {
