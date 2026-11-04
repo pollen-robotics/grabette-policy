@@ -205,3 +205,19 @@ def test_push_disabled_means_no_best_upload(flag):
         ["train.py", "--policy.repo_id=u/m", "--steps=1000", *flag])
     assert base is None, "push_to_hub=false must disable the _best upload too"
     assert _repo_arg(new) == "u/m"
+
+
+# ── TR-17: the FAST round-trip check samples within-episode chunks ─────
+
+def test_verify_chunks_stay_within_one_episode():
+    spec = importlib.util.spec_from_file_location(
+        "_vft", _PI05 / "pi0fast" / "verify_fast_tokenizer.py")
+    vft = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vft)
+    ep = np.repeat(np.arange(7), [13, 9, 30, 10, 25, 11, 12])
+    H = 10
+    starts = vft.chunk_starts(ep, H, 20)
+    assert len(starts) == 20
+    for s in starts:
+        assert ep[s] == ep[s + H - 1], f"chunk at {s} crosses an episode boundary"
+    assert starts[0] == 0 and starts[-1] == len(ep) - H   # still spans the dataset

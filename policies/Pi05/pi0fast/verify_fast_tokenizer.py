@@ -20,9 +20,21 @@ Usage:
 import argparse
 
 import numpy as np
-from transformers import AutoProcessor
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+
+def chunk_starts(episode_index: np.ndarray, horizon: int, n_chunks: int) -> np.ndarray:
+    """`n_chunks` start frames spread over the dataset, every chunk WITHIN one
+    episode — the same population fit_fast_tokenizer.py fits on. Chunks that
+    straddle an episode boundary never occur in training, so including them
+    measured the round-trip on actions the tokenizer is never asked to encode.
+    """
+    ep = np.asarray(episode_index)
+    s = np.arange(len(ep) - horizon + 1)
+    valid = s[ep[s] == ep[s + horizon - 1]]
+    pick = np.linspace(0, len(valid) - 1, min(n_chunks, len(valid))).round().astype(int)
+    return valid[pick]
 
 
 def parse_args():
@@ -39,6 +51,9 @@ def parse_args():
 
 
 def main():
+    # Imported here so chunk_starts() is importable without transformers.
+    from transformers import AutoProcessor
+
     args = parse_args()
     tok = AutoProcessor.from_pretrained(args.tokenizer, trust_remote_code=True)
     ds = LeRobotDataset(args.dataset_repo_id, root=args.dataset_root)
@@ -51,12 +66,12 @@ def main():
     # Pull contiguous action chunks straight from the dataset's parquet so we
     # get the raw (un-normalized) action sequence, then normalize it ourselves
     # the same way the policy's NormalizerProcessorStep (MEAN_STD) would.
-    frames = ds.hf_dataset.select_columns("action")
+    frames = ds.hf_dataset.select_columns(["action", "episode_index"])
     A = np.stack([np.asarray(a, dtype=np.float64) for a in frames["action"]])
     H = args.action_horizon
 
     errs = []
-    starts = np.linspace(0, len(A) - H - 1, args.n_chunks).astype(int)
+    starts = chunk_starts(np.asarray(frames["episode_index"]), H, args.n_chunks)
     for s in starts:
         chunk = A[s: s + H, : args.action_dim]                     # [H, D] raw
         norm = (chunk - mean) / (std + 1e-8)                       # MEAN_STD normalized
