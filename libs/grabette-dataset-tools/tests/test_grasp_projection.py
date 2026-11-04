@@ -235,6 +235,16 @@ def test_a_genuinely_negative_episode_is_still_flipped():
     assert max(out) == pytest.approx(0.9)
 
 
+def test_idle_channel_not_flipped():
+    """DT-8: a channel that never closes has no direction of travel; its largest
+    excursion is the calibration offset (~1 deg), whose sign is noise. Flipping
+    on it gave channels of one episode mixed conventions."""
+    ch = [-0.03] * 100 + [0.01] * 20
+    out, flipped = normalize_closing_sign(ch)
+    assert flipped is False
+    assert out == ch
+
+
 def test_median_filter_kills_a_spike_at_the_very_end():
     """The edge window is SHIFTED INWARD rather than truncated. Truncating leaves
     a 2-3 sample window at the boundary, where a spike PAIR is its own majority

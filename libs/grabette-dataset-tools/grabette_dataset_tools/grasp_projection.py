@@ -99,6 +99,11 @@ REACHABLE_DISTAL = math.radians(102.0)
 # Guard against a zero-variance (synthetic) input in the segmenter's noise floor.
 _EPS = 1e-12
 
+# Smallest excursion (rad, ~5.7 deg) from which `normalize_closing_sign` reads a
+# direction: well above the ~1 deg zero-calibration offset, well below any real
+# close (proximal grasps sit near 48 deg).
+_SIGN_MIN_EXCURSION = 0.1
+
 # Where a converted dataset records the projection it was built with, relative to
 # the dataset root. NOT a key in meta/info.json: that file is parsed into a
 # fixed-field dataclass whose unknown keys are dropped on the next write (verified
@@ -482,6 +487,12 @@ def normalize_closing_sign(values: list[float]) -> tuple[list[float], bool]:
         return list(values), False
     clean = _median_filter(values, width=5)
     peak = max(clean, key=abs)
+    # A channel that never travels has no direction to read: its largest
+    # excursion is the calibration offset (~1 deg), whose sign is noise.
+    # Flipping on it gave one episode's two channels mixed conventions, so below
+    # the floor the channel is left as recorded.
+    if abs(peak) < _SIGN_MIN_EXCURSION:
+        return list(values), False
     if peak < 0:
         return [-v for v in values], True
     return list(values), False
