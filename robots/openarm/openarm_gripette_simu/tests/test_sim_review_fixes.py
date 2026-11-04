@@ -78,3 +78,23 @@ def test_legacy_reset_gives_up_instead_of_hanging(servicer, monkeypatch):
     t.join(timeout=20.0)
     assert not t.is_alive(), "Reset is stuck in the cube rejection loop"
     assert not out["r"].success
+
+
+# ── SIM-3: legacy cube sampling uses THIS scene's table ────────────────────
+
+def _tabletop(sim):
+    """(x_min, x_max, y_min, y_max, top_z) of the loaded scene's tabletop."""
+    g = sim.model.geom("tabletop").id
+    c, s = sim.data.geom_xpos[g], sim.model.geom_size[g]
+    return c[0] - s[0], c[0] + s[0], c[1] - s[1], c[1] + s[1], c[2] + s[2]
+
+
+def test_legacy_reset_keeps_the_cube_on_this_table(servicer, sim):
+    mujoco.mj_forward(sim.model, sim.data)
+    x0, x1, y0, y1, top = _tabletop(sim)
+    half_h = float(sim.model.geom_size[sim.model.geom("red_cube").id][1])   # cylinder
+    for _ in range(60):
+        r = reset(servicer, START_JOINTS)
+        assert r.success
+        assert x0 < r.cube_x < x1 and y0 < r.cube_y < y1, (r.cube_x, r.cube_y)
+        assert abs(r.cube_z - (top + half_h)) < 1e-3, r.cube_z
