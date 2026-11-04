@@ -9,10 +9,15 @@ Two facts from the verified internals make this small:
    those six lines lets us mutate the image masks in place, which is how a view
    is removed without disturbing token order.
 
-Removing a view by zeroing its mask (rather than dropping the batch key) matters
-twice over: absent keys are appended AFTER the present ones, which would change
-token order and position ids; and pi0.5 is trained with missing-camera masking,
-so a masked view is in distribution while a grey rectangle is not.
+Removing a view by zeroing its mask (rather than dropping the batch key) keeps
+the camera BLOCK ORDER: absent keys are appended AFTER the present ones, which
+would move every later camera's tokens. It does NOT keep position ids: pi0.5
+computes them as `cumsum(pad_masks) - 1`, so zeroing a view's mask shifts the
+positions of every token after it (later cameras, language, actions). Nor is a
+masked view known to be in distribution: stock lerobot only masks a camera
+when it is absent from the batch, so a checkpoint trained on one always-present
+camera has never seen a fully masked image block. The ablation millimetres are
+therefore a "no image" counterfactual, not an in-distribution one.
 """
 
 from typing import Any, Callable
