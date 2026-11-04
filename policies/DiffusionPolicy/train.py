@@ -97,7 +97,11 @@ _warn_if_shm_dir_on_tmpfs()
 
 def save_train_state(ckpt_dir: Path, *, optimizer, step: int, best_val_loss: float):
     """Save optimizer + bookkeeping next to the model checkpoint, so the run
-    can be resumed exactly later."""
+    can be resumed exactly later.
+
+    `step` is the NEXT step to run on resume (i.e. completed steps + 1 for an
+    in-loop save). Recording the step just completed made a resume repeat it
+    and immediately overwrite the checkpoint it resumed from."""
     torch.save(
         {
             "step": int(step),
@@ -225,21 +229,29 @@ def make_delta_timestamps(delta_indices: list[int] | None, fps: int) -> list[flo
 
 @torch.no_grad()
 def compute_val_loss(policy, preprocessor, val_dataloader, device, max_batches=50, bf16=False):
-    """Compute average loss on the validation set."""
+    """Compute average loss on the validation set.
+
+    The diffusion loss draws random noise and timesteps, so an unseeded val
+    loss is partly sampling noise, and best-by-val selection with it. Every
+    eval uses the SAME draws (fixed seed), inside a forked RNG so the training
+    RNG stream is left exactly where it was.
+    """
     policy.eval()
     total_loss = 0.0
     num_batches = 0
-    for batch in val_dataloader:
-        batch = preprocessor(batch)
-        if bf16 and device.type == "cuda":
-            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+    with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+        torch.manual_seed(0)
+        for batch in val_dataloader:
+            batch = preprocessor(batch)
+            if bf16 and device.type == "cuda":
+                with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+                    loss, _ = policy.forward(batch)
+            else:
                 loss, _ = policy.forward(batch)
-        else:
-            loss, _ = policy.forward(batch)
-        total_loss += loss.item()
-        num_batches += 1
-        if num_batches >= max_batches:
-            break
+            total_loss += loss.item()
+            num_batches += 1
+            if num_batches >= max_batches:
+                break
     policy.train()
     return total_loss / max(num_batches, 1)
 
@@ -767,7 +779,7 @@ def main():
                     preprocessor.save_pretrained(best_dir)
                     postprocessor.save_pretrained(best_dir)
                     save_train_state(best_dir, optimizer=optimizer,
-                                     step=step, best_val_loss=best_val_loss)
+                                     step=step + 1, best_val_loss=best_val_loss)
 
                 print(
                     f"step: {step:>7d} / {args.training_steps}  "
@@ -795,8 +807,9 @@ def main():
                 policy.save_pretrained(ckpt_dir)
                 preprocessor.save_pretrained(ckpt_dir)
                 postprocessor.save_pretrained(ckpt_dir)
+                # step + 1: this step is done; resume continues after it.
                 save_train_state(ckpt_dir, optimizer=optimizer,
-                                 step=step, best_val_loss=best_val_loss)
+                                 step=step + 1, best_val_loss=best_val_loss)
                 print(f"  -> saved checkpoint to {ckpt_dir}")
 
             step += 1
