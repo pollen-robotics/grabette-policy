@@ -76,3 +76,50 @@ def test_disable_script_all_disabled_is_reported_ok(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "torque-free" in out
     assert "WARNING" not in out
+
+
+class _StuckMotor:
+    """openarm_can motor stand-in that never reports a mechanical stop
+    (stale comms / dead feedback: frozen position, zero torque)."""
+
+    def get_position(self):
+        return 0.0
+
+    def get_velocity(self):
+        return 0.0
+
+    def get_torque(self):
+        return 0.0
+
+
+class _FakeComp:
+    def __init__(self):
+        self.targets = []
+        self._motors = [_StuckMotor() for _ in range(7)]
+
+    def get_motors(self):
+        return self._motors
+
+    def mit_control_one(self, idx, param):
+        self.targets.append(param[2])  # commanded q (rad)
+        # Test-side backstop so an uncapped loop FAILS instead of hanging.
+        assert len(self.targets) < 100_000, "bump_to_limit wound up without a travel cap"
+
+
+# RA-11 (travel cap only): bump_to_limit had no travel/timeout cap — with stale
+# feedback the stop condition never fires and q_target winds up forever, so
+# when comms return the motor sees a target far past its mechanical stop.
+@pytest.mark.parametrize("joint", ["J1", "J4", "J7"])
+def test_bump_to_limit_aborts_after_max_travel(monkeypatch, joint):
+    import numpy as np
+
+    mod = _load_example("calibrate_arm_no_gripper")
+    monkeypatch.setattr(mod, "oa", SimpleNamespace(MITParam=lambda *p: p))
+    monkeypatch.setattr(mod, "time", SimpleNamespace(sleep=lambda s: None))
+    comp = _FakeComp()
+    jid = mod.JointID[joint]
+    with pytest.raises(RuntimeError):
+        mod.bump_to_limit(SimpleNamespace(recv_all=lambda: None), comp, jid, step_deg=-0.2)
+    lo, hi = mod.mech_lim[jid]
+    # Never commanded further than the joint's full mechanical range (+ margin).
+    assert max(abs(q) for q in comp.targets) <= (hi - lo) + np.deg2rad(10.0) + 1e-9
