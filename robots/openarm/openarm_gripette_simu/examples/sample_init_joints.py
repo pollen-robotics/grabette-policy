@@ -8,7 +8,7 @@ near-mean actions (which on this dataset look like a slow lift with
 gripper drifting closed) regardless of cube position.
 
 This script samples a home pose from the SAME distribution
-`collect_grasp_dataset.py` uses, runs IK to the camera frame, prints the
+`collect_grasp_dataset.py` uses, runs IK to the control frame (oak_l), prints the
 7 joint values formatted for `--initial-joints`. Pass them to the server.
 
 Usage:
@@ -27,12 +27,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from grabette_trajectory import (  # noqa: E402
-    body_pose_to_camera_pose,
     pose_T,
     sample_episode_waypoints,
 )
 from openarm_gripette_simu import IKFeasibilityChecker, Kinematics  # noqa: E402
-from openarm_gripette_simu.kinematics import CAMERA_FRAME  # noqa: E402
+from openarm_gripette_simu.kinematics import CONTROL_FRAME  # noqa: E402
 
 ARM_IK_SEED = np.array([1.0, 0.0, 0.0, 0.5, 0.0, 0.0, 1.5])
 
@@ -44,14 +43,22 @@ def parse_args():
     return p.parse_args()
 
 
-def main():
-    args = parse_args()
-    rng = np.random.default_rng(args.seed)
+def sample_init_joints(seed: int = 0, max_attempts: int = 200):
+    """Sample a feasible training-distribution plan and IK its home pose.
+
+    Returns (arm_q, waypoints), or (None, None) if no feasible plan was found.
+    """
+    rng = np.random.default_rng(seed)
     kin = Kinematics()
 
+    # The plan's poses are CONTROL_FRAME (oak_l) poses — grabette's
+    # BODY_TO_CAMERA is the identity because the mocap is welded at oak_l — so
+    # check and IK that frame, exactly like the collector and the sim server's
+    # reset. Targeting the URDF "camera" site (40 mm / 20 deg from oak_l) put
+    # the camera, not oak_l, at the home pose.
     checker = IKFeasibilityChecker(
         Kinematics(),
-        frame=CAMERA_FRAME,
+        frame=CONTROL_FRAME,
         seed_joints=ARM_IK_SEED,
         pos_tol_m=0.015,
         rot_tol_deg=5.0,
@@ -68,8 +75,21 @@ def main():
         return episode_target_poses(wp), wp
 
     poses, wp, stats = checker.sample_feasible_trajectory(
-        builder, max_attempts=args.max_attempts,
+        builder, max_attempts=max_attempts,
     )
+    if wp is None:
+        return None, None
+
+    home_T = pose_T(wp.home_xyz, wp.home_quat)
+    arm_q = kin.inverse(home_T, current_joint_positions=ARM_IK_SEED.copy(),
+                         n_iter=300, frame=CONTROL_FRAME)
+    return arm_q, wp
+
+
+def main():
+    args = parse_args()
+    kin = Kinematics()
+    arm_q, wp = sample_init_joints(args.seed, args.max_attempts)
     if wp is None:
         print(f"Could not find a feasible plan in {args.max_attempts} attempts.", file=sys.stderr)
         sys.exit(1)
@@ -80,15 +100,11 @@ def main():
     print(f"  home pitch : {wp.home_dbg['pitch_deg']:.1f} deg")
     print(f"  home yaw   : {wp.home_dbg['yaw_deg']:.1f} deg")
 
-    cam_xyz, cam_quat = body_pose_to_camera_pose(wp.home_xyz, wp.home_quat)
-    home_T = pose_T(cam_xyz, cam_quat)
-    arm_q = kin.inverse(home_T, current_joint_positions=ARM_IK_SEED.copy(),
-                         n_iter=300, frame=CAMERA_FRAME)
-
     # Verify
-    T_actual = kin.forward(arm_q, frame=CAMERA_FRAME)
-    pos_err_mm = np.linalg.norm(T_actual[:3, 3] - cam_xyz) * 1000
-    print(f"  IK residual: {pos_err_mm:.2f} mm (expect <1 mm)")
+    T_actual = kin.forward(arm_q, frame=CONTROL_FRAME)
+    pos_err_mm = np.linalg.norm(T_actual[:3, 3] - wp.home_xyz) * 1000
+    print(f"  IK residual ({CONTROL_FRAME}): {pos_err_mm:.2f} mm "
+          f"(the sim server's reset accepts < 20 mm)")
 
     print()
     print("Arm joints (rad):")
