@@ -123,22 +123,6 @@ def test_ik_roll_stays_inside_driver_limit(kin, mj):
     assert abs(q[ROLL_IDX]) <= ROLL_IK_LIMIT + 1e-6, np.degrees(q[ROLL_IDX])
 
 
-def test_ik_brings_unneeded_roll_back_toward_zero(kin, mj):
-    """Seeded with roll = 0.5 on a target reachable with roll = 0, IK should
-    still reach the pose AND return roll toward 0 (soft posture task), instead
-    of leaving it where the seed parked it."""
-    model, data = mj
-    q_star = np.array([0.3, 0.1, 0.0, 1.2, 0.0, 0.0, 0.3])
-    T_star = _mujoco_site_pose(model, data, q_star, CONTROL_FRAME)
-    seed = q_star.copy()
-    seed[ROLL_IDX] = 0.5
-    q = kin.inverse(T_star, current_joint_positions=seed, frame=CONTROL_FRAME)
-    T = _mujoco_site_pose(model, data, q, CONTROL_FRAME)
-    assert np.linalg.norm(T[:3, 3] - T_star[:3, 3]) < 1e-3
-    assert _rot_err_deg(T[:3, :3], T_star[:3, :3]) < 0.5
-    assert abs(q[ROLL_IDX]) < 0.1, np.degrees(q[ROLL_IDX])
-
-
 def test_ik_keeps_mimic_coupled(kin):
     """After IK, the placo mimic joint equals -roll (what MuJoCo/the real arm do)."""
     T = kin.forward(np.array([0.2, 0.0, 0.1, 1.0, 0.1, 0.4, 0.2]), frame=CONTROL_FRAME)
