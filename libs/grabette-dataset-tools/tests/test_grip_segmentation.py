@@ -76,6 +76,28 @@ def test_a_close_that_is_not_held_is_not_a_grasp():
     assert [e for e in events if e.kind == "close"] == []
 
 
+def test_end_of_episode_twitch_is_not_a_close():
+    """DT-6: the same twitch (ramp up, then a drop larger than hold_tol) gave 0
+    closes mid-episode and 1 at the episode end, because the hold check was
+    skipped whenever fewer than hold_frames frames remained — so `c_target = 1`
+    was written on rest frames. The frames that DO exist must pass hold_tol."""
+    tail = ramp(0.20, 0.45, 8) + [0.45] * 3 + ramp(0.45, 0.365, 6) + [0.365] * 6
+    mid = [0.2] * 100 + tail + [0.365] * 60
+    end = [0.2] * 100 + tail
+    for name, sig in (("mid-episode", mid), ("at end", end)):
+        _labels, events = segment_grip(sig)
+        assert [e for e in events if e.kind == "close"] == [], name
+
+
+def test_a_steady_close_at_the_episode_end_is_still_a_grasp():
+    """The reason for the short-tail exception: a pick-and-lift may end before a
+    full hold_frames window. A steady hold that is simply cut short stays a close."""
+    sig = hold(0.18, 80) + ramp(0.18, 0.52, 10) + hold(0.52, 10, wobble=0.01)
+    labels, events = segment_grip(sig)
+    assert len([e for e in events if e.kind == "close"]) == 1
+    assert labels[-1] == "close"
+
+
 def test_a_hesitation_mid_close_still_reads_as_one_event():
     """A deliberate close often pauses briefly; splitting there would report two
     half-amplitude events and neither would qualify."""

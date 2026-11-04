@@ -331,12 +331,12 @@ def segment_grip(
         if sign > 0:
             hold_to = min(n, e + 1 + hold_frames)
             held = c[e + 1:hold_to]
-            if len(held) < hold_frames:
-                # Too close to the end to confirm a hold: accept only if the
-                # episode simply ends here, which is how a pick-and-lift finishes.
-                if e < n - 1 - hold_frames:
-                    continue
-            elif max(abs(v - c[e]) for v in held) > hold_tol:
+            # Near the end fewer than hold_frames frames remain (a pick-and-lift
+            # may finish there), so a full hold cannot be confirmed — but the
+            # frames that DO exist must still pass hold_tol. Skipping the test
+            # entirely accepted an end-of-episode twitch that the same check
+            # rejects mid-episode, writing a full close on rest frames.
+            if held and max(abs(v - c[e]) for v in held) > hold_tol:
                 continue
         # Refine the onset to where the motion actually becomes deliberate.
         #
