@@ -10,7 +10,6 @@ import json
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from grabette_chunkrel.chunk_relative import to_chunk_relative
 from grabette_dataset_tools.chunk_relative_stats import (
