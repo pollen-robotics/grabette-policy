@@ -33,6 +33,8 @@ CUBE_X_NOISE = 0.06
 CUBE_Y_NOISE = 0.2
 CUBE_YAW_NOISE = np.pi
 ARM_JOINT_NOISE = 0.08
+# Legacy reset: cube draws before giving up (Reset then returns success=False).
+MAX_CUBE_PLACEMENT_TRIES = 200
 
 # Table bounds (from table_red_cube.xml)
 TABLE_X_MIN = 0.165
@@ -244,7 +246,9 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         cube_qadr = self._sim.model.jnt_qposadr[cube_jnt_id]
         cube_dof_adr = self._sim.model.jnt_dofadr[cube_jnt_id]
 
-        while True:
+        # Bounded: an arm pose covering the whole sampling region would
+        # otherwise spin here forever, holding the sim lock.
+        for _attempt in range(MAX_CUBE_PLACEMENT_TRIES):
             cube_x = np.clip(
                 CUBE_NOMINAL_X + self._rng.uniform(-CUBE_X_NOISE, CUBE_X_NOISE),
                 TABLE_X_MIN + 0.02, TABLE_X_MAX - 0.02,
@@ -262,6 +266,10 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
 
             if not self._cube_contacts_robot():
                 break
+        else:
+            raise RuntimeError(
+                f"no contact-free cube position found in {MAX_CUBE_PLACEMENT_TRIES} "
+                "draws — the arm pose covers the cube sampling region")
 
         self._cube_start_xy = np.array([cube_x, cube_y])
         self._cube_start_z = CUBE_Z
@@ -430,8 +438,6 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
             # local noise around START_JOINTS. Used when no server reference,
             # or when the caller pins joints explicitly.
             with self._lock:
-                cx, cy, cz = self._randomize_cube()
-
                 if len(request.joint_positions) == 7:
                     joints = np.array(request.joint_positions)
                 else:
@@ -439,7 +445,11 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
                         -ARM_JOINT_NOISE, ARM_JOINT_NOISE, size=7
                     )
 
+                # Arm FIRST: the cube's no-contact check must run against the
+                # pose the arm is about to hold, not the previous episode's
+                # (which teleported the arm into a cube validated elsewhere).
                 self._sim.reset_arm(joints)
+                cx, cy, cz = self._randomize_cube()
                 self._sim.data.qvel[:] = 0
                 mujoco.mj_forward(self._sim.model, self._sim.data)
                 self._sync_target_from_sim()
