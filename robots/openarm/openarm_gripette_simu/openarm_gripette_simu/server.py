@@ -285,6 +285,25 @@ class SimulationServer:
             self.reset_arm_random()
         elif keycode == _KEY_2:
             self.reset_cube_random()
+        else:
+            return
+        self._begin_servicer_episode()
+
+    def _begin_servicer_episode(self):
+        """After a viewer key reset, start a fresh episode in the ArmServicer
+        the way its Reset RPC does: lift is measured from the cube's NEW
+        resting pose, the grasp diagnostics restart, and the Cartesian
+        integrator re-syncs to the arm (needed after '2' too, which moves only
+        the cube but must still drop any stale integrator target)."""
+        arm = getattr(self, "_arm_servicer", None)
+        if arm is None:
+            return
+        with self._lock:
+            cube = self._sim.data.body("red_cube").xpos
+            arm._cube_start_xy = cube[:2].copy()
+            arm._cube_start_z = float(cube[2])
+            arm._reset_grasp_diag()
+            arm._sync_target_from_sim()
 
     def _physics_loop(self):
         """Step physics at the model's timestep rate (background thread)."""

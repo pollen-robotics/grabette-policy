@@ -133,3 +133,27 @@ def test_arm_cube_penetration_is_a_collision(server):
     _place_cube(sim, grip)                                # cube inside the jaws
     assert server._arm_config_collides(START_JOINTS, cube_bid)
     _place_cube(sim, (0.44, -0.142, 0.41))                # put it back for later tests
+
+
+# ── SIM-6: viewer key resets start a fresh episode for the ArmServicer ─────
+
+@pytest.mark.parametrize("key", ["_KEY_R", "_KEY_1", "_KEY_2"])
+def test_key_reset_refreshes_the_servicer_episode_state(server, key):
+    import openarm_gripette_simu.server as srv_mod
+
+    arm = ArmServicer(server._sim, server._kin, server._lock, 0.0, server=server)
+    server._arm_servicer = arm
+    try:
+        arm._cube_start_xy = np.array([9.0, 9.0])            # stale episode state
+        arm._cube_start_z = 9.0
+        arm._diag_min_gap = 0.001
+        arm._target_pos = arm._target_pos + 1.0              # stale integrator
+        server._key_callback(getattr(srv_mod, key))
+        cube = server._sim.data.body("red_cube").xpos
+        np.testing.assert_allclose(arm._cube_start_xy, cube[:2], atol=1e-9)
+        assert abs(arm._cube_start_z - cube[2]) < 1e-9
+        assert arm._diag_min_gap == np.inf
+        pos, _r6d, _q = arm._get_state_from_sim()
+        np.testing.assert_allclose(arm._target_pos, pos, atol=1e-9)
+    finally:
+        del server._arm_servicer
