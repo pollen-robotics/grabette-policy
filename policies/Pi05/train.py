@@ -188,8 +188,23 @@ def _fresh_pipeline(policy_cfg, pretrained_path=None, pretrained_revision=None, 
     # to the deserialization path; the fresh build takes everything it needs
     # (normalization stats, tokenizer names, device) from policy_cfg +
     # dataset_stats.
-    kwargs.pop("preprocessor_overrides", None)
+    pre_overrides = kwargs.pop("preprocessor_overrides", None) or {}
     kwargs.pop("postprocessor_overrides", None)
+    # On --resume=true, lerobot (pinned e40b58a8, lerobot_train.py:318) omits
+    # `dataset_stats` and passes the stats ONLY inside the normalizer override.
+    # Dropping the overrides then builds a normalizer with NO stats, which
+    # passes data through unchanged: the resumed run trains unnormalized and
+    # ships an identity (un)normalizer. Recover them from the override.
+    if kwargs.get("dataset_stats") is None:
+        kwargs["dataset_stats"] = (pre_overrides.get("normalizer_processor") or {}).get("stats")
+    if kwargs.get("dataset_stats") is None:
+        # lerobot 0.6.1+ forwards no stats at all on resume (it trusts the
+        # checkpoint's serialized processor, which this launcher bypasses).
+        raise RuntimeError(
+            "no normalization stats reached the processor factory (neither "
+            "dataset_stats nor preprocessor_overrides['normalizer_processor']"
+            "['stats']); refusing to build an identity normalizer. This lerobot "
+            "revision does not forward stats on --resume=true.")
     _check_stats_match_representation(policy_cfg, kwargs.get("dataset_stats"))
     pre, post = _original(policy_cfg, pretrained_path=None, pretrained_revision=None, **kwargs)
     if _CHUNK_RELATIVE:
