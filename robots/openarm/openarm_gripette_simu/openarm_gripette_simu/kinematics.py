@@ -19,6 +19,12 @@ ARM_JOINT_NAMES = [
     "r_wrist_pitch",
 ]
 
+# Passive joint coupled to r_wrist_roll: mimic = MIMIC_RATIO * roll (URDF <mimic>,
+# MuJoCo <equality>). Not an arm joint: never exposed in the 7-joint vectors.
+ROLL_JOINT = "r_wrist_roll"
+MIMIC_JOINT = "r_wrist_roll_mimic"
+MIMIC_RATIO = -1.0
+
 # Frame names
 CAMERA_FRAME = "camera"
 GRIPPER_FRAME = "gripper_center"
@@ -64,10 +70,23 @@ class Kinematics:
         self.solver.enable_joint_limits(True)
         self.solver.dt = 0.01
 
-        # Mask non-arm joints so IK only moves the 7 arm DOFs
+        # Mask the gripper joints so IK only moves the arm.
         self.solver.mask_dof("proximal")
         self.solver.mask_dof("distal")
-        self.solver.mask_dof("r_wrist_roll_mimic")
+
+        # Wrist roll coupling. In the URDF, r_wrist_roll's own child is a side
+        # branch; the joint that actually carries the wrist pitch and the whole
+        # gripper/camera chain is r_wrist_roll_mimic (<mimic multiplier="-1"/>,
+        # which placo does not apply by itself). MuJoCo ties them with an
+        # equality constraint, mimic = -roll. Placo has to model the same
+        # coupling, else FK is blind to r_wrist_roll and IK never uses it:
+        #   - forward()/inverse() set mimic = -roll whenever they set the joints
+        #     (_set_arm_joints);
+        #   - IK keeps it via a hard gear task, dq_mimic = -1 * dq_roll, so the
+        #     solver moves both together as one DoF.
+        self._gear_task = self.solver.add_gear_task()
+        self._gear_task.set_gear(MIMIC_JOINT, ROLL_JOINT, MIMIC_RATIO)
+        self._gear_task.configure("wrist_roll_mimic", "hard", 1.0)
 
         # Small regularization keeps the QP full-rank (min-velocity solution).
         self.solver.add_regularization_task(1e-4)
@@ -101,8 +120,7 @@ class Kinematics:
         Returns:
             4x4 homogeneous transform (world -> frame).
         """
-        for i, name in enumerate(ARM_JOINT_NAMES):
-            self.robot.set_joint(name, joint_positions[i])
+        self._set_arm_joints(joint_positions)
         self.robot.update_kinematics()
         return self.robot.get_T_world_frame(frame).copy()
 
@@ -127,8 +145,7 @@ class Kinematics:
             7-element array of arm joint angles (rad).
         """
         if current_joint_positions is not None:
-            for i, name in enumerate(ARM_JOINT_NAMES):
-                self.robot.set_joint(name, current_joint_positions[i])
+            self._set_arm_joints(current_joint_positions)
             self.robot.update_kinematics()
 
         # Convert a target given in another frame to the camera target the
@@ -147,6 +164,12 @@ class Kinematics:
             self.robot.update_kinematics()
 
         return self.get_arm_joints()
+
+    def _set_arm_joints(self, joint_positions) -> None:
+        """Write the 7 arm joints (ARM_JOINT_NAMES order) and the coupled mimic."""
+        for i, name in enumerate(ARM_JOINT_NAMES):
+            self.robot.set_joint(name, joint_positions[i])
+        self.robot.set_joint(MIMIC_JOINT, MIMIC_RATIO * self.robot.get_joint(ROLL_JOINT))
 
     def get_arm_joints(self) -> np.ndarray:
         """Read the current arm joint positions from the Placo model."""
