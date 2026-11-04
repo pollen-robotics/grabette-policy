@@ -366,7 +366,12 @@ def convert_dataset(
 
     _drop_stale_action_stats(dst_root)
     _write_sidecar(dst_root, gp, src_root)
-    _write_card(dst_root, repo_id=stats_repo_id)
+    # A `local/...` id only names the dataset for the stats pass; it is not a Hub
+    # repo, so it must not become a viewer link in the card.
+    card_repo_id = stats_repo_id
+    if card_repo_id and card_repo_id.startswith("local/"):
+        card_repo_id = None
+    _write_card(dst_root, repo_id=card_repo_id)
 
     # WARN, don't refuse. A converted dataset that only ever lives locally for an
     # experiment is legitimate, so publication rules must not block conversion —
@@ -416,7 +421,8 @@ def convert_dataset(
                    "meaning and RANGE, so stale stats mis-normalise training.")
 @click.option("--repo_id", default=None,
               help="repo_id to open the converted dataset under, for the stats "
-                   "pass only; the data always comes from --dst_root. A LOCAL id "
+                   "pass only; the data always comes from --dst_root. Defaults "
+                   "to local/<dst_root name>. A LOCAL id "
                    "(local/anything) is the right choice and needs no Hub access: "
                    "LeRobotDataset only queries the Hub when the root is "
                    "incomplete, and by this point it is fully written. Do NOT pass "
@@ -426,9 +432,16 @@ def convert_dataset(
 def main(src_root, dst_root, rest_is_closed, overwrite, recompute_stats, repo_id):
     """Re-express a dataset's gripper channels as (strategy, commanded closure)."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # The stats pass needs SOME repo_id to open the dataset under. Without one it
+    # used to be skipped silently, so the default `--src_root A --dst_root B`
+    # kept radian stats on the new [0, 1] channels. Fall back to a local id,
+    # which needs no Hub access (see --repo_id).
+    stats_repo_id = None
+    if recompute_stats:
+        stats_repo_id = repo_id or f"local/{Path(dst_root).name}"
     report = convert_dataset(Path(src_root), Path(dst_root),
                             rest_is_closed=rest_is_closed, overwrite=overwrite,
-                            stats_repo_id=repo_id if recompute_stats else None)
+                            stats_repo_id=stats_repo_id)
 
     n = report["episodes"]
     click.echo("")
