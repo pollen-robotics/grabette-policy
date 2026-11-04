@@ -169,3 +169,39 @@ def test_save_hook_does_not_push_a_worse_best_after_resume(tmp_path, monkeypatch
     monkeypatch.setitem(ck._EVAL_STATE, "loss", 0.08)
     ck._save_checkpoint(new, 2000, None)
     assert pushed == []
+
+
+# ── TR-12: the end-of-run push target and push_to_hub=false ─────────────
+
+def _repo_arg(argv):
+    for i, a in enumerate(argv):
+        if a.startswith("--policy.repo_id="):
+            return a.split("=", 1)[1]
+        if a == "--policy.repo_id":
+            return argv[i + 1]
+    return None
+
+
+@pytest.mark.parametrize("argv", [
+    ["--policy.repo_id=u/m", "--steps=1000"],
+    ["--policy.repo_id", "u/m", "--steps=1000"],
+    ["--policy.repo_id", "u/m", "--steps", "1000"],
+])
+def test_last_push_is_rewritten_in_every_argv_form(argv):
+    new, base = ck._rewrite_last_push_target(["train.py", *argv])
+    assert base == "u/m"
+    assert _repo_arg(new) == "u/m_step1000"
+
+
+def test_missing_steps_uses_lerobots_default():
+    new, base = ck._rewrite_last_push_target(["train.py", "--policy.repo_id=u/m"])
+    assert base == "u/m" and _repo_arg(new) == "u/m_step100000"
+
+
+@pytest.mark.parametrize("flag", [["--policy.push_to_hub=false"],
+                                  ["--policy.push_to_hub", "False"]])
+def test_push_disabled_means_no_best_upload(flag):
+    new, base = ck._rewrite_last_push_target(
+        ["train.py", "--policy.repo_id=u/m", "--steps=1000", *flag])
+    assert base is None, "push_to_hub=false must disable the _best upload too"
+    assert _repo_arg(new) == "u/m"

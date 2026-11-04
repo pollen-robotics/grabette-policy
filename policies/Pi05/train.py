@@ -603,22 +603,46 @@ def _rewrite_last_push_target(argv):
     The best is uploaded separately to <repo_id>_best. Neither lands on the bare
     id, so a run can never silently replace a good checkpoint with a worse one —
     which is what shipped on 2026-09-04.
+
+    Returns (argv, base repo id). The base id is None when nothing may be
+    pushed (no repo id, or --policy.push_to_hub=false): it gates the _best
+    upload too, which otherwise ignored push_to_hub=false.
     """
-    repo, steps = None, None
-    for a in argv:
-        if a.startswith("--policy.repo_id="):
-            repo = a.split("=", 1)[1]
-        elif a.startswith("--steps="):
-            steps = a.split("=", 1)[1]
-    if not (repo and steps) or repo.endswith(f"_step{steps}"):
+    def value(flag):
+        # draccus accepts both `--flag=value` and `--flag value`.
+        for i, a in enumerate(argv):
+            if a.startswith(flag + "="):
+                return i, a.split("=", 1)[1]
+            if a == flag and i + 1 < len(argv):
+                return i, argv[i + 1]
+        return None, None
+
+    i_repo, repo = value("--policy.repo_id")
+    _, steps = value("--steps")
+    _, push = value("--policy.push_to_hub")
+    if push is not None and push.lower() in ("false", "0", "no"):
+        return argv, None
+    if not repo:
+        return argv, repo
+    if steps is None:
+        # Not on the command line: lerobot runs its own default, so name the
+        # push after that rather than letting it land on the bare id.
+        from lerobot.configs.train import TrainPipelineConfig
+        steps = next(f.default for f in dataclasses.fields(TrainPipelineConfig)
+                     if f.name == "steps")
+    if repo.endswith(f"_step{steps}"):
         return argv, repo
     target = f"{repo}_step{steps}"
     # print, not logging: this runs before lerobot's main() configures logging,
     # so a logging call here goes nowhere and the rewrite looks like it never
     # happened. Observed on the first run with these patches.
     print(f"[checkpoints] last -> {target}, best -> {repo}_best", flush=True)
-    return [f"--policy.repo_id={target}" if a.startswith("--policy.repo_id=") else a
-            for a in argv], repo
+    new = list(argv)
+    if new[i_repo] == "--policy.repo_id":
+        new[i_repo + 1] = target
+    else:
+        new[i_repo] = f"--policy.repo_id={target}"
+    return new, repo
 
 
 _orig_init_logging = lerobot_train.init_logging
