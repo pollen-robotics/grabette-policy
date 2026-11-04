@@ -1091,9 +1091,13 @@ def detect_chunk_relative(checkpoint):
         logger.warning(f"Could not read the processor config ({e}); "
                        "pass --chunk_relative on|off explicitly")
         return None
-    names = [st.get("registry_name") or st.get("class") or "" for st in steps
-             if isinstance(st, dict)]
-    found = any("chunk_relative" in str(x) for x in names)
+    steps = [st for st in steps if isinstance(st, dict)]
+    names = [st.get("registry_name") or st.get("class") or "" for st in steps]
+    # A step registered with enabled=False is a pass-through: the actions are
+    # NOT offsets, so it must not count (missing "enabled" = on, its default).
+    found = any("chunk_relative" in str(name)
+                and (st.get("config") or {}).get("enabled", True) is not False
+                for name, st in zip(names, steps))
     logger.info(f"Chunk-relative auto-detect: preprocessor steps = {names} -> "
                 f"{'CHUNK-RELATIVE' if found else 'per-step deltas'}")
     return found

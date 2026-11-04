@@ -366,3 +366,26 @@ def test_meaningful_flags_do_not_warn(ev, monkeypatch, caplog):
                                  "--latch_close", "0.5", "--grip_gain", "1.3"])
         _parse(ev, monkeypatch, ["--skip_stale", "--max_ticks", "2", "--latch_close", "0.5"])
     assert "ignored" not in caplog.text
+
+
+# ── EV-18: a registered-but-disabled chunk-relative step is not "on" ───────
+
+def _write_preproc(tmp_path, steps):
+    import json
+    d = tmp_path / "ckpt"
+    d.mkdir(exist_ok=True)
+    (d / "policy_preprocessor.json").write_text(
+        json.dumps({"name": "policy_preprocessor", "steps": steps}))
+    return str(d)
+
+
+def test_disabled_chunk_relative_step_is_not_detected(ev, tmp_path):
+    d = _write_preproc(tmp_path, [
+        {"registry_name": "grabette_chunk_relative_actions", "config": {"enabled": False}}])
+    assert ev.detect_chunk_relative(d) is False
+
+
+def test_enabled_chunk_relative_step_is_detected(ev, tmp_path):
+    d = _write_preproc(tmp_path, [
+        {"registry_name": "grabette_chunk_relative_actions", "config": {"enabled": True}}])
+    assert ev.detect_chunk_relative(d) is True
