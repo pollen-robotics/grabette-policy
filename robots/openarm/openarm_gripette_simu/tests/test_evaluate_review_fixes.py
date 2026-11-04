@@ -178,3 +178,32 @@ def test_grip_assist_measures_lag_in_radians_under_the_projection(ev):
         grasp_projection=GraspProjection(), grip_assist=assist)
     assert assist.lag == assist.lag and assist.lag < 0.01, f"lag {assist.lag}"
     assert assist.state != "GRIPPED" and assist.n_gripped == 0
+
+
+# ── main() / argument handling (no policy load, no network) ────────────────
+
+class _ReachedPolicyLoad(Exception):
+    """main() got past argument validation to the policy load."""
+
+
+def run_main(ev, monkeypatch, argv):
+    """Run main() with argv; stop it at the policy load so nothing is fetched."""
+    def _no_load(_ckpt):
+        raise _ReachedPolicyLoad
+    monkeypatch.setattr(ev, "_load_policy_any", _no_load)
+    monkeypatch.setattr("sys.argv", ["evaluate.py", *argv])
+    ev.main()
+
+
+# ── EV-3: --async_exec does not implement the grasp projection ─────────────
+
+def test_async_exec_with_the_grasp_projection_is_refused(ev, monkeypatch):
+    with pytest.raises(SystemExit, match="grasp_projection"):
+        run_main(ev, monkeypatch, ["--checkpoint", "/nonexistent", "--async_exec",
+                                   "--grasp_projection", "on", "--chunk_relative", "off"])
+
+
+def test_async_exec_with_raw_angles_still_starts(ev, monkeypatch):
+    with pytest.raises(_ReachedPolicyLoad):
+        run_main(ev, monkeypatch, ["--checkpoint", "/nonexistent", "--async_exec",
+                                   "--grasp_projection", "off", "--chunk_relative", "off"])

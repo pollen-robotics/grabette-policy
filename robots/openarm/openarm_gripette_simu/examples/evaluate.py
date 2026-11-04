@@ -1929,6 +1929,16 @@ def main():
         f"Gripper action space: "
         f"{'(strategy, closure) -> decoded to angles' if projection else 'raw angles'}"
     )
+    if projection is not None and args.async_exec:
+        # The async path (run_episode_async / ChunkExecutor) is not wired for
+        # the projection: it would feed raw angles as the state and send
+        # (strategy, closure) to the servo as radians (closure 1.0 -> 1 rad),
+        # and compare --latch_close/--commit_close against (s, c).
+        raise SystemExit(
+            "--grasp_projection needs sync mode (not --async_exec): the async "
+            "executor neither encodes the state nor decodes the gripper "
+            "actions. Run without --async_exec."
+        )
 
     # Chunk-relative actions. Getting this wrong is as silent as the projection:
     # 8D offsets read as 11D per-step deltas would slice the rotation out of the
