@@ -336,3 +336,33 @@ def test_frozen_episode_reports_the_measured_displacement(ev):
     _a, _g, _c, r = run(ev, ConstPolicy(hold_action((0.0, 0.0))), arm=arm, max_steps=5)
     assert not r["success"] and r["steps"] == 1
     assert r["displacement_mm"] == pytest.approx(31.0, abs=1e-6)
+
+
+# ── EV-15: flags that a mode silently ignores now say so ───────────────────
+
+def _parse(ev, monkeypatch, argv):
+    monkeypatch.setattr("sys.argv", ["evaluate.py", "--checkpoint", "x", *argv])
+    return ev.parse_args()
+
+
+@pytest.mark.parametrize("argv,flag", [
+    (["--commit_close", "0.5"], "--commit_close"),                        # sync mode
+    (["--policy_addr", "h:1", "--skip_stale"], "--skip_stale"),           # remote
+    (["--grip_assist", "50", "--latch_close", "0.5"], "--latch_close"),
+    (["--grip_assist", "50", "--grip_gain", "1.3"], "--grip_gain"),
+    (["--async_exec", "--max_ticks", "3"], "--max_ticks"),
+    (["--async_exec", "--skip_stale"], "--skip_stale"),
+])
+def test_inert_flag_combinations_warn(ev, monkeypatch, caplog, argv, flag):
+    with caplog.at_level("WARNING"):
+        _parse(ev, monkeypatch, argv)
+    assert any(flag in r.message and "ignored" in r.message for r in caplog.records), \
+        caplog.text
+
+
+def test_meaningful_flags_do_not_warn(ev, monkeypatch, caplog):
+    with caplog.at_level("WARNING"):
+        _parse(ev, monkeypatch, ["--async_exec", "--commit_close", "0.5",
+                                 "--latch_close", "0.5", "--grip_gain", "1.3"])
+        _parse(ev, monkeypatch, ["--skip_stale", "--max_ticks", "2", "--latch_close", "0.5"])
+    assert "ignored" not in caplog.text

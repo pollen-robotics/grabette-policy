@@ -667,7 +667,32 @@ def parse_args():
         p.error("either --checkpoint or --policy_addr is required")
     if args.grip_assist is not None and args.async_exec:
         p.error("--grip_assist is sync-mode only (not --async_exec)")
+    warn_inert_flags(args)
     return args
+
+
+def warn_inert_flags(args):
+    """Warn (don't fail) about flags the selected mode parses but never uses,
+    so an A/B run is not silently comparing identical configurations."""
+    inert = []
+    if args.async_exec:
+        if args.max_ticks != 1:
+            inert.append(("--max_ticks", "--async_exec (the executor paces ticks itself)"))
+        if args.skip_stale:
+            inert.append(("--skip_stale", "--async_exec (chunk handoff already skips)"))
+    else:
+        if args.commit_close is not None:
+            inert.append(("--commit_close", "sync mode (it is an --async_exec option)"))
+        if args.policy_addr is not None and args.skip_stale:
+            inert.append(("--skip_stale", "--policy_addr (remote inference has no local queue)"))
+        if args.grip_assist is not None:
+            if args.latch_close is not None:
+                inert.append(("--latch_close", "--grip_assist (the assist owns the gripper)"))
+            if args.grip_gain != 1.0:
+                inert.append(("--grip_gain", "--grip_assist (the assist owns the gripper)"))
+    for flag, why in inert:
+        logger.warning(f"{flag} is ignored with {why}.")
+    return inert
 
 
 class CameraStream:
