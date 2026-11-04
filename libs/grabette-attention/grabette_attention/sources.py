@@ -51,11 +51,20 @@ class DumpObsSource:
             if bgr is None:
                 raise ValueError(f"could not read {path}")
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            if index not in states:
+                # evaluate.py writes one state line per PNG. An empty state
+                # would crash deep in the normalizer, or drop out of the
+                # prompt, instead of naming what is missing.
+                raise ValueError(
+                    f"{path.name} has no state line (step {index}) in "
+                    f"{self._dir / 'state.jsonl'}"
+                )
             yield FrameObservation(
+                # One dump directory is one episode, labelled 0.
                 episode=0,
                 frame=index,
                 images={self._camera_key: rgb},
-                state=states.get(index, np.zeros(0, np.float32)),
+                state=states[index],
                 task=self._task,
             )
 

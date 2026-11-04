@@ -47,6 +47,26 @@ def test_dump_obs_pairs_each_frame_with_its_state(tmp_path):
     assert frames[1].frame == 1
 
 
+def test_a_dump_frame_with_no_state_line_is_a_clear_error(tmp_path):
+    # Frame 2 has a PNG but no state.jsonl line. An empty state would crash
+    # deep in the normalizer (or vanish from the prompt) instead of naming the
+    # missing line.
+    write_dump(tmp_path)
+    lines = (tmp_path / "state.jsonl").read_text().splitlines()[:2]
+    (tmp_path / "state.jsonl").write_text("\n".join(lines) + "\n")
+    source = DumpObsSource(tmp_path, task="t", camera_key="cam0")
+    with pytest.raises(ValueError, match="state"):
+        list(source.frames())
+
+
+def test_a_dump_without_state_jsonl_is_a_clear_error(tmp_path):
+    write_dump(tmp_path)
+    (tmp_path / "state.jsonl").unlink()
+    source = DumpObsSource(tmp_path, task="t", camera_key="cam0")
+    with pytest.raises(ValueError, match="state"):
+        list(source.frames())
+
+
 def test_grasp_selection_finds_the_first_closure_crossing():
     gripper = np.array([0.0, 0.0, 0.1, 0.6, 0.9, 0.9, 0.2], np.float32)
     indices, note = select_frames(gripper, n_frames=7, mode="grasp")
