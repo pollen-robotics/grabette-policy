@@ -417,8 +417,11 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
                 # of that flip, they don't prevent it. Comparing the new
                 # solution to the last accepted one catches the branch flip
                 # directly and trips the integrator before it propagates.
-                if self._latest_target_joints is not None and self._max_ik_jump_rad > 0:
-                    delta_joints = target_joints - self._latest_target_joints
+                # Reference = the IK seed: the last accepted solution, or the
+                # MEASURED joints before the first accepted command — so the
+                # first command after startup / torque-off is guarded too.
+                if self._max_ik_jump_rad > 0:
+                    delta_joints = target_joints - ik_seed
                     max_jump = float(np.max(np.abs(delta_joints)))
                     if max_jump > self._max_ik_jump_rad:
                         bad_idx = int(np.argmax(np.abs(delta_joints)))
