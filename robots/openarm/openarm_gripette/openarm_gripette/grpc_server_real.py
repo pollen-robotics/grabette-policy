@@ -198,6 +198,11 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         self._current_cmd_joints: np.ndarray | None = None
         self._interp_enabled = True
         self._interp_running = True
+        # Bumped by SetTorque(enable=False) BEFORE it waits for _cmd_lock. A
+        # Reset ramp (which holds _cmd_lock for RESET_DURATION_S) polls it
+        # every step and aborts, so the torque-off e-stop is never queued
+        # behind a multi-second ramp.
+        self._torque_off_seq = 0
 
         # IK-jump watchdog state. The threshold is per-joint per-step. A
         # singularity-driven branch flip on a 50 Hz policy loop usually shows
@@ -490,7 +495,8 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         """Move the arm smoothly to the home (or specified) joint configuration.
 
         Pauses the setpoint interpolator for the duration of the linear ramp,
-        then resyncs its state to the final pose so it resumes cleanly.
+        then resyncs its state to the final pose so it resumes cleanly. If the
+        ramp fails, the interpolator stays paused (motion frozen).
 
         Cube randomization is a no-op (no physical cube); dummy cube coords are
         returned for API compatibility with the simulator.
@@ -510,32 +516,46 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
                     error=f"non-finite Reset joint target: {target_joints.tolist()}",
                 )
 
+            # Snapshot BEFORE taking the lock: a torque-off requested while
+            # this Reset waits for (or holds) the lock must abort it.
+            torque_off_seq = self._torque_off_seq
             self._interp_enabled = False
-            try:
-                with self._cmd_lock:
-                    start_joints = self._arm.get_positions()
+            with self._cmd_lock:
+                start_joints = self._arm.get_positions()
 
-                    num_steps = int(RESET_DURATION_S * RESET_HZ)
-                    dt = 1.0 / RESET_HZ
+                num_steps = int(RESET_DURATION_S * RESET_HZ)
+                dt = 1.0 / RESET_HZ
 
-                    logger.info(
-                        f"Reset: interpolating over {RESET_DURATION_S}s "
-                        f"from {start_joints.round(3).tolist()} to {target_joints.round(3).tolist()}"
-                    )
+                logger.info(
+                    f"Reset: interpolating over {RESET_DURATION_S}s "
+                    f"from {start_joints.round(3).tolist()} to {target_joints.round(3).tolist()}"
+                )
 
-                    for i in range(1, num_steps + 1):
-                        alpha = i / num_steps
-                        interp = start_joints * (1 - alpha) + target_joints * alpha
-                        self._arm.send_command_rad(interp)
-                        time.sleep(dt)
+                for i in range(1, num_steps + 1):
+                    if self._torque_off_seq != torque_off_seq:
+                        # SetTorque(False) is waiting for the lock: stop the
+                        # ramp now (interpolator stays paused) and let it run.
+                        logger.warning("Reset aborted by torque-off request.")
+                        return arm_pb2.ResetResponse(
+                            success=False, error="Reset aborted: torque disabled"
+                        )
+                    alpha = i / num_steps
+                    interp = start_joints * (1 - alpha) + target_joints * alpha
+                    self._arm.send_command_rad(interp)
+                    time.sleep(dt)
 
-                    # Resync interp state so it picks up from here without a jump.
-                    self._current_cmd_joints = target_joints.copy()
-                    self._latest_target_joints = target_joints.copy()
-                    self._sync_target_from_robot()
-                    # Re-homing un-latches the IK-jump watchdog: fresh count.
-                    self._ik_jump_violations = 0
-            finally:
+                # Resync interp state so it picks up from here without a jump.
+                self._current_cmd_joints = target_joints.copy()
+                self._latest_target_joints = target_joints.copy()
+                self._sync_target_from_robot()
+                # Re-homing un-latches the IK-jump watchdog: fresh count.
+                self._ik_jump_violations = 0
+                # Re-arm the interpolator ONLY after a complete ramp. If the
+                # ramp raised (CAN error), the interpolator targets are still
+                # the PRE-Reset ones: re-enabling would drive the arm back
+                # toward them and silently clear an IK-watchdog latch. Motion
+                # stays frozen (arm holds the last ramp setpoint) until a
+                # successful Reset or SetTorque(enable=True).
                 self._interp_enabled = True
 
             return arm_pb2.ResetResponse(
@@ -570,6 +590,12 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         disabled, and FELL when released. Counterintuitive and unsafe.)
         """
         try:
+            if not request.enable:
+                # E-stop path: signal any in-progress Reset ramp to abort and
+                # pause the interpolator BEFORE waiting for _cmd_lock, so the
+                # wait is at most one ramp step instead of the whole ramp.
+                self._torque_off_seq += 1
+                self._interp_enabled = False
             with self._cmd_lock:
                 if request.enable:
                     self._arm.set_torque(True)
