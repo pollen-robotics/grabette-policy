@@ -1466,10 +1466,13 @@ def run_episode(
                     f"Reset/re-home the arm before the next one.",
                     flush=True,
                 )
+                # Still a FAIL, but report how far the cube actually got (a
+                # hard-coded 0.0 biased the run's average displacement down).
+                status = arm_stub.GetSuccessStatus(arm_pb2.SuccessStatusRequest())
                 return {
                     "success": False,
                     "steps": step + 1,
-                    "displacement_mm": 0.0,
+                    "displacement_mm": status.cube_displacement * 1000,
                     "duration_s": time.perf_counter() - episode_start,
                     "n_clamped": n_clamped,
                     "n_rejected": n_rejected,

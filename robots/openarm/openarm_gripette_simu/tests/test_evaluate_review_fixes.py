@@ -326,3 +326,13 @@ def test_joint_space_checkpoint_is_refused_before_connecting(ev, monkeypatch):
 def test_cartesian_checkpoint_still_connects(ev, monkeypatch):
     with pytest.raises(_ReachedConnect):
         run_main_loaded(ev, monkeypatch, [])
+
+
+# ── EV-14: a frozen-arm episode still reports the real displacement ────────
+
+def test_frozen_episode_reports_the_measured_displacement(ev):
+    arm = FakeArm(displacement=0.031)
+    arm.frozen = True
+    _a, _g, _c, r = run(ev, ConstPolicy(hold_action((0.0, 0.0))), arm=arm, max_steps=5)
+    assert not r["success"] and r["steps"] == 1
+    assert r["displacement_mm"] == pytest.approx(31.0, abs=1e-6)
