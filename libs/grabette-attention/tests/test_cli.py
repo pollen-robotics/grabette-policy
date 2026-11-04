@@ -139,7 +139,14 @@ class _FakeDatasetForMain:
     for `DatasetSource` to run its real selection logic end to end."""
 
     def __init__(self, repo_id, root=None, episodes=None):
+        import numpy as np
+
         self._episode = episodes[0]
+        # What DatasetSource reads for grasp selection: channel metadata and
+        # the parquet action column (no names, so the last channel is assumed
+        # to be closure).
+        self.features = {"action": {"dtype": "float32", "shape": [3]}}
+        self.hf_dataset = {"action": [np.zeros(3, np.float32)]}
 
     def __len__(self):
         return 1

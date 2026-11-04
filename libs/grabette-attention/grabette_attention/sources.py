@@ -107,9 +107,10 @@ class DatasetSource:
                 self._repo_id, root=self._root, episodes=[episode]
             )
             n_frames = len(dataset)
-            gripper = self._gripper_track(dataset, n_frames)
+            gripper, missing = self._gripper_track(dataset)
             indices, note = select_frames(
-                gripper, n_frames, mode=self._selection, count=self._count
+                gripper, n_frames, mode=self._selection, count=self._count,
+                missing=missing,
             )
             self.notes[episode] = note
             for index in indices:
@@ -149,18 +150,43 @@ class DatasetSource:
                     task=task,
                 )
 
-    def _gripper_track(self, dataset, n_frames: int) -> np.ndarray | None:
-        """The gripper channel over the episode, for grasp-frame selection."""
+    def _gripper_track(self, dataset) -> tuple[np.ndarray | None, str | None]:
+        """The gripper CLOSURE channel over the episode, for grasp-frame selection.
+
+        Returns (track, why): track is None when there is no usable closure
+        channel, and `why` (if not None) says so for the summary note.
+
+        The channel must be a [0, 1] closure for select_frames' threshold to
+        mean anything. Graspproj datasets name it "closure"; raw 8D/11D
+        datasets end in the distal finger ANGLE instead, so when the dataset
+        names its action channels, a channel not named closure is refused
+        rather than thresholded. Unnamed channels keep the old assumption.
+        """
+        names = (dataset.features.get("action") or {}).get("names")
+        if isinstance(names, (list, tuple)):
+            try:
+                name = str(names[self._gripper_channel])
+            except IndexError:
+                name = None
+            if name is None or "closure" not in name:
+                return None, (
+                    f"no closure channel (action[{self._gripper_channel}] is "
+                    f"{name!r})"
+                )
         try:
+            # The action COLUMN only: `dataset[i]` would decode every video
+            # frame of the episode just to read one float per frame.
+            # hf_dataset is already filtered to this episode, with the same
+            # relative indexing as `dataset[i]`.
             return np.asarray(
                 [
-                    float(np.asarray(dataset[i]["action"])[self._gripper_channel])
-                    for i in range(n_frames)
+                    float(np.asarray(action)[self._gripper_channel])
+                    for action in dataset.hf_dataset["action"]
                 ],
                 dtype=np.float32,
-            )
+            ), None
         except (KeyError, IndexError, TypeError):
-            return None
+            return None, None
 
 
 def select_frames(
@@ -170,6 +196,7 @@ def select_frames(
     mode: str | Sequence[int],
     threshold: float = 0.5,
     count: int = 1,
+    missing: str | None = None,
 ) -> tuple[list[int], str]:
     """Choose which frames to analyse, and say how the choice was made.
 
@@ -177,6 +204,8 @@ def select_frames(
     concentrating at the grasp. When there is no gripper channel, or the episode
     never closes, this falls back to an even stride and RETURNS THAT FACT so the
     summary can print it instead of silently analysing the wrong frames.
+    `missing` overrides the "no gripper channel found" wording when the caller
+    knows more precisely why `gripper` is None.
     """
     if not isinstance(mode, str):
         indices = [int(i) for i in mode]
@@ -198,7 +227,7 @@ def select_frames(
         indices = _stride(n_frames, count)
         return (
             indices,
-            f"no gripper channel found; even stride of {len(indices)}",
+            f"{missing or 'no gripper channel found'}; even stride of {len(indices)}",
         )
     closed = np.flatnonzero(np.asarray(gripper) >= threshold)
     if closed.size == 0:
