@@ -46,8 +46,15 @@ def test_forward_then_inverse_recovers_the_absolute_actions():
     back = inv(transition(rel))[TransitionKey.ACTION]
 
     assert rel.shape == act.shape
-    assert torch.abs(back[..., :3] - act[..., :3]).max() < 2e-3
-    assert torch.abs(back[..., 6:] - act[..., 6:]).max() < 1e-4
+    # The maths is exact; what remains is float32 storage of ~2 m positions.
+    # (Was 2e-3 — 2 mm of slack where the true error is ~1e-7.)
+    assert torch.abs(back[..., :3] - act[..., :3]).max() < 1e-5
+    # Rotation too: compare as rotations, since rotvecs are only unique mod 2pi.
+    from scipy.spatial.transform import Rotation
+    r_back = Rotation.from_rotvec(back[..., 3:6].reshape(-1, 3).double().numpy())
+    r_act = Rotation.from_rotvec(act[..., 3:6].reshape(-1, 3).double().numpy())
+    assert (r_back.inv() * r_act).magnitude().max() < 1e-5
+    assert torch.abs(back[..., 6:] - act[..., 6:]).max() < 1e-6
 
 
 def test_the_forward_step_actually_changes_the_actions():
