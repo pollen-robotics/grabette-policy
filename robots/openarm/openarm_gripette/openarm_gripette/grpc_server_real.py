@@ -515,10 +515,17 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         returned for API compatibility with the simulator.
         """
         try:
-            if len(request.joint_positions) == 7:
+            n_joints = len(request.joint_positions)
+            if n_joints == 7:
                 target_joints = np.array(request.joint_positions, dtype=np.float64)
-            else:
+            elif n_joints == 0:
                 target_joints = HOME_JOINTS_RAD.copy()
+            else:
+                # A malformed request must not silently move the arm HOME.
+                return arm_pb2.ResetResponse(
+                    success=False,
+                    error=f"Reset needs 0 (home) or 7 joint positions, got {n_joints}",
+                )
 
             # Refuse NaN/inf BEFORE pausing the interpolator or touching the
             # motors: the driver's joint-limit clip maps NaN to the UPPER limit,

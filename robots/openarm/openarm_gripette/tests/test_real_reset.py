@@ -21,6 +21,27 @@ def test_reset_rejects_non_finite_joints(make_servicer, fake_arm, fast_reset, ba
     assert fake_arm.sent == []
 
 
+# RA-16: a Reset with 1-6 or 8+ joints silently went HOME instead of erroring
+# (a malformed client request moved the arm somewhere it didn't ask for).
+@pytest.mark.parametrize("n", [1, 6, 8])
+def test_reset_wrong_length_errors(make_servicer, fake_arm, fast_reset, n):
+    s = make_servicer(fake_arm)
+    resp = s.Reset(arm_pb2.ResetRequest(joint_positions=[0.0] * n), None)
+    assert not resp.success
+    assert fake_arm.sent == []
+
+
+def test_reset_empty_goes_home(make_servicer, fake_arm, fast_reset):
+    from openarm_gripette import grpc_server_real as srv
+
+    fake_arm.q = fake_arm.q + 0.1
+    s = make_servicer(fake_arm)
+    resp = s.Reset(arm_pb2.ResetRequest(), None)
+    assert resp.success
+    np.testing.assert_allclose(fake_arm.sent[-1], srv.HOME_JOINTS_RAD)
+    assert s._interp_enabled
+
+
 # RA-3: a Reset that fails mid-ramp (CAN error) used to re-enable the
 # interpolator unconditionally in its `finally:` while the targets were only
 # re-synced on success — so the interpolator drove the arm BACK to the stale
