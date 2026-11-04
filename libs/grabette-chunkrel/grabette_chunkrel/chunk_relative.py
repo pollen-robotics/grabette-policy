@@ -301,6 +301,10 @@ class ChunkRelativeDeltas:
     one reference; across chunks they do not, so carrying `prev` over a boundary
     would emit the difference between two unrelated frames — a large spurious
     jump exactly when the policy re-plans.
+
+    Actions dropped from a chunk's head (eval `--skip_stale`) MUST still be fed
+    to `step()`, output discarded. Otherwise the first executed delta is the
+    whole offset a_k from the reference — a k-step jump — instead of one step.
     """
 
     def __init__(self, rot: str = "rotvec"):

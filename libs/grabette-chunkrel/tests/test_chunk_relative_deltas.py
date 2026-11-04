@@ -138,6 +138,22 @@ def test_the_first_delta_of_a_chunk_moves_from_the_reference():
     assert np.abs(dp - rel[3][:3]).max() < 1e-9
 
 
+def test_skip_stale_emits_incremental_delta():
+    """EV-20: when the eval loop drops the first k (stale) actions of a chunk, it
+    must still step() the converter over them. Then the first EXECUTED delta is
+    the one-step motion A_{k-1}^-1 (a_k - a_{k-1}), not the k-step jump a_k that
+    a converter which never saw the dropped head would emit."""
+    rel, _ = to_chunk_relative(make_chunk())
+    k = 5
+    conv = ChunkRelativeDeltas()
+    for a in rel[:k]:
+        conv.step(a)                         # dropped head: output discarded
+    dp, _dr, _g = conv.step(rel[k])
+    want = Rotation.from_rotvec(rel[k - 1, 3:6]).inv().apply(rel[k, :3] - rel[k - 1, :3])
+    assert np.abs(dp - want).max() < 1e-9
+    assert np.linalg.norm(dp) < 0.5 * np.linalg.norm(rel[k, :3]), "k-step jump"
+
+
 def test_forgetting_to_reset_across_chunks_is_a_large_error():
     """Justifies why reset() is mandatory at every replan: carrying `prev` over a
     boundary differences two unrelated frames."""
