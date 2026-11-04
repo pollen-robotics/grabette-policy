@@ -1316,7 +1316,20 @@ def run_episode(
             R_acc = np.eye(3)
             gripper_goal = None
             frozen_error = None
-            for _ in range(n_ticks):
+            for tick in range(n_ticks):
+                # Never REPLAN on a catch-up tick. Every select_action() call
+                # appends `batch` to the policy's observation queue, so a chunk
+                # generated on the 2nd+ tick of an iteration would be
+                # conditioned on (obs_t, obs_t) — a duplicated pair, out of
+                # distribution for n_obs_steps=2. Stop at the chunk boundary
+                # instead; the next iteration replans from a fresh frame, and
+                # the unsent ticks are handed back to the wallclock budget.
+                if tick > 0 and client is None:
+                    q = policy_action_queue(policy)
+                    if q is not None and len(q) == 0:
+                        t_nominal -= (n_ticks - tick) * dt
+                        n_ticks = tick
+                        break
                 # Latency compensation (UMI-style): when the policy is about
                 # to REPLAN (action queue empty), the new chunk starts from
                 # the pose in the observation — but that frame is stale, and

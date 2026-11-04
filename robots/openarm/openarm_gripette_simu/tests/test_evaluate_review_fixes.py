@@ -147,7 +147,7 @@ def fake_grip_pb2():
                                                  motor2_goal=motor2_goal))
 
 
-def run(ev, policy, arm=None, gripper=None, camera=None, max_steps=20, **kw):
+def run(ev, policy, arm=None, gripper=None, camera=None, max_steps=20, fps=1000.0, **kw):
     arm = arm or FakeArm()
     gripper = gripper or FakeGripper()
     camera = camera or FakeCamera(gripper)
@@ -156,7 +156,7 @@ def run(ev, policy, arm=None, gripper=None, camera=None, max_steps=20, **kw):
         arm_stub=arm, gripper_stub=gripper,
         arm_pb2=fake_pb2(), gripper_pb2=fake_grip_pb2(),
         camera=camera, device=torch.device("cpu"),
-        max_steps=max_steps, fps=1000.0, success_check_freq=1000,
+        max_steps=max_steps, fps=fps, success_check_freq=1000,
         debug=False, use_relative_proprio=False, start_pos=None, start_rot=None,
         task="t", **kw)
     return arm, gripper, camera, result
@@ -207,3 +207,58 @@ def test_async_exec_with_raw_angles_still_starts(ev, monkeypatch):
     with pytest.raises(_ReachedPolicyLoad):
         run_main(ev, monkeypatch, ["--checkpoint", "/nonexistent", "--async_exec",
                                    "--grasp_projection", "off", "--chunk_relative", "off"])
+
+
+# ── EV-4: --max_ticks > 1 must not generate from a duplicated obs pair ─────
+
+class QueueDiffusion:
+    """lerobot DiffusionPolicy.select_action's contract: EVERY call appends the
+    batch to an obs queue (maxlen n_obs_steps=2, primed by duplicating the first
+    obs), and a chunk is generated from that queue when the action queue is
+    empty. Records the obs pair each generation saw."""
+
+    N_ACT = 3
+
+    def __init__(self):
+        from collections import deque
+        self._obs = deque(maxlen=2)
+        self._queues = {"action": deque()}
+        self.config = SimpleNamespace(n_action_steps=self.N_ACT)
+        self.generation_pairs = []
+
+    def select_action(self, batch):
+        frame_id = float(batch["observation.state"][0, 0])
+        if not self._obs:
+            self._obs.extend([frame_id, frame_id])
+        else:
+            self._obs.append(frame_id)
+        if not self._queues["action"]:
+            self.generation_pairs.append(tuple(self._obs))
+            self._queues["action"].extend(
+                torch.from_numpy(hold_action((0.0, 0.0)).astype(np.float32))
+                for _ in range(self.N_ACT))
+        time.sleep(0.004)          # slower than the 2 ms tick -> catch-up kicks in
+        return self._queues["action"].popleft().unsqueeze(0)
+
+
+class FrameCounterCamera(FakeCamera):
+    """A new, numbered frame per observation (state[0] = frame id)."""
+
+    def get(self):
+        self.n += 1
+        return (np.zeros((8, 8, 3), np.uint8), np.array([self.n, 0.0], np.float32),
+                time.perf_counter() * 1000.0)
+
+
+@pytest.mark.parametrize("max_ticks", [1, 2, 3])
+def test_no_generation_sees_a_duplicated_obs_pair(ev, max_ticks):
+    pol = QueueDiffusion()
+    gripper = FakeGripper()
+    arm, *_ = run(ev, pol, gripper=gripper, camera=FrameCounterCamera(gripper),
+                  max_steps=15, fps=500.0, max_ticks=max_ticks)
+    later = pol.generation_pairs[1:]             # the first is primed by design
+    assert len(later) >= 3
+    dup = [p for p in later if p[0] == p[1]]
+    assert not dup, f"generations from a duplicated pair: {dup} of {later}"
+    if max_ticks > 1:
+        assert len(arm.deltas) > 15, "catch-up never sent more than one tick/iteration"
