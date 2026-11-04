@@ -78,6 +78,25 @@ def test_disable_script_all_disabled_is_reported_ok(monkeypatch, capsys):
     assert "WARNING" not in out
 
 
+# RA-15: the per-step cap was only checked at the NOMINAL dt, but each delta is
+# target(t) - prev, so after an RPC stall one delta covered the whole stall.
+def test_sinusoid_step_clamped_after_stall(monkeypatch):
+    import numpy as np
+
+    monkeypatch.syspath_prepend(str(EXAMPLES))  # for `from _torque_guard import ...`
+    mod = _load_example("cartesian_sinusoid")
+    cap_m = mod.MAX_PER_STEP_MM / 1000.0
+    amp, omega, dt = 0.02, 2 * np.pi * 0.25, 0.1  # script defaults: 3.1 mm/step nominal
+    times = list(np.arange(0.0, 1.0, dt)) + list(np.arange(2.0, 4.0, dt))  # 1 s stall
+    prev, deltas = 0.0, []
+    for t in times:
+        d, prev = mod.clamp_step(amp * np.sin(omega * t), prev, cap_m)
+        deltas.append(d)
+    assert max(abs(d) for d in deltas) <= cap_m + 1e-12
+    # and the commanded offset catches back up with the reference
+    assert abs(prev - amp * np.sin(omega * times[-1])) < 1e-9
+
+
 class _StuckMotor:
     """openarm_can motor stand-in that never reports a mechanical stop
     (stale comms / dead feedback: frozen position, zero torque)."""
