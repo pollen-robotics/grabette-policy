@@ -237,3 +237,22 @@ def test_split_is_pushed_with_both_checkpoints(run_main, monkeypatch):
     run, _ = run_main
     run("--training_steps", "3", "--eval_freq", "1", "--push_to_hub", "u/m")
     assert sorted(uploads) == [("u/m", "val_episodes.json"), ("u/m-best", "val_episodes.json")]
+
+
+# ── TR-7: train-time pre-resize vs the model's eval resize ──────────────
+
+@pytest.mark.xfail(strict=True, reason=(
+    "TR-7 NEEDS DECISION: with --color_jitter, training frames are downscaled by "
+    "F.interpolate(bilinear) WITHOUT antialias, while val/offline_eval/deployment "
+    "go through the encoder's antialiased torchvision Resize. Matching them "
+    "changes the certified training recipe."))
+def test_jitter_pre_resize_matches_the_eval_resize():
+    import torchvision.transforms as T
+
+    g = torch.Generator().manual_seed(0)
+    img = torch.rand(1, 3, 720, 960, generator=g)   # native camera resolution
+    batch = {"observation.images.cam0": img.clone()}
+    out = train.apply_color_jitter(batch, ["observation.images.cam0"], lambda x: x,
+                                   torch.device("cpu"), resize_shape=(236, 236))
+    ref = T.Resize((236, 236))(img)                 # what DiffusionRgbEncoder applies
+    assert (out["observation.images.cam0"] - ref).abs().max() < 2 / 255
