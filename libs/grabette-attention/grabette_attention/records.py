@@ -38,11 +38,18 @@ class CameraAttention:
     grid: (rows, cols) float32. Letterbox padding rows are ALREADY removed, so
         the grid maps onto real image content only.
     mass: this camera's share of the prefix attention. Shares over all cameras
-        plus `FrameAnalysis.language_mass` sum to 1.
+        plus `FrameAnalysis.language_mass` sum to 1. It counts EVERY token of
+        the camera's block, letterbox padding included, so it is not the mass
+        the (cropped) grid shows.
+    padding_mass: the part of `mass` that landed on fully padded rows/columns,
+        i.e. exactly what the grid crop removes. `mass - padding_mass` is the
+        attention on image content. Defaults to 0.0 for hand-built records;
+        `reduce.reduce_attention` always fills it.
     """
 
     grid: np.ndarray
     mass: float
+    padding_mass: float = 0.0
 
 
 @dataclass(frozen=True)

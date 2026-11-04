@@ -77,6 +77,37 @@ def test_padding_rows_are_cropped_from_the_returned_grid():
     assert cams["cam0"].grid.shape == (12, 16)
 
 
+def test_attention_parked_on_padding_is_reported_as_padding_mass():
+    # All of cam0's attention on its two fully padded top rows (tokens 0..31).
+    # `mass` keeps counting every token of the block (its documented meaning),
+    # but `padding_mass` must expose that none of it landed on image content:
+    # the cropped grid is empty and mass - padding_mass is zero.
+    caps = captures(1, steps=1, layers=1, value=0.0)
+    caps[(0, 0)][:, :, 0:32] = 1.0
+    caps[(0, 0)][:, :, 256:456] = 1.0          # some on language
+    cams, _ = reduce_attention(caps, layout(1), GEOM, patch=PATCH)
+    cam = cams["cam0"]
+    assert cam.grid.sum() == 0.0
+    assert cam.mass == pytest.approx(32 / 232)
+    assert cam.padding_mass == pytest.approx(cam.mass)
+
+
+def test_padding_mass_is_exactly_what_the_crop_removes():
+    # Uniform attention: 4 of 16 rows (2 top, 2 bottom) are padding at 4:3,
+    # so padding_mass is a quarter of the camera's mass, and the content share
+    # (mass - padding_mass) equals the cropped grid's share of the prefix.
+    cams, _ = reduce_attention(captures(1), layout(1), GEOM, patch=PATCH)
+    cam = cams["cam0"]
+    assert cam.padding_mass == pytest.approx(cam.mass * 4 / 16)
+    assert cam.mass - cam.padding_mass == pytest.approx(cam.grid.sum() / 456)
+
+
+def test_an_unpadded_camera_has_zero_padding_mass():
+    square = {"cam0": LetterboxGeometry.from_shapes(src_hw=(480, 480), dst_hw=(224, 224))}
+    cams, _ = reduce_attention(captures(1), layout(1), square, patch=PATCH)
+    assert cams["cam0"].padding_mass == 0.0
+
+
 def test_a_masked_camera_is_absent_from_the_result():
     cams, _ = reduce_attention(
         captures(2), layout(2, masked=frozenset({"cam1"})), GEOM, patch=PATCH,
