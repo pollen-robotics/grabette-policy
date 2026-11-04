@@ -1,10 +1,13 @@
-"""Regenerate gRPC Python files from proto/gripper.proto for the sim package.
+"""Regenerate gRPC Python files from proto/{gripper,arm}.proto for the sim package.
 
 Mirrors packages/gripette/generate_proto.py in the grabette repo. The gripper.proto
 here MUST stay field-for-field identical to grabette's
 packages/gripette/proto/gripper.proto (CI's proto-sync job checks it) — the eval
 client (built from these stubs) talks to BOTH the sim server and the real
 device over the wire, so field numbers must match.
+
+arm.proto is regenerated too: regenerating only gripper.proto let arm_pb2*.py
+silently drift from arm.proto (tests/test_sim_review_fixes.py checks they match).
 
 After generation, fixes the grpc import to a relative import (grpc_tools emits
 an absolute import that doesn't resolve inside the package).
@@ -15,27 +18,29 @@ import sys
 from pathlib import Path
 
 OUTPUT_DIR = Path("openarm_gripette_simu/proto")
+PROTOS = ("gripper", "arm")
 
 
 def main():
-    cmd = [
-        sys.executable, "-m", "grpc_tools.protoc",
-        "--proto_path=proto",
-        f"--python_out={OUTPUT_DIR}",
-        f"--grpc_python_out={OUTPUT_DIR}",
-        f"--pyi_out={OUTPUT_DIR}",
-        "gripper.proto",
-    ]
-    print(f"Running: {' '.join(cmd)}")
-    subprocess.check_call(cmd)
+    for name in PROTOS:
+        cmd = [
+            sys.executable, "-m", "grpc_tools.protoc",
+            "--proto_path=proto",
+            f"--python_out={OUTPUT_DIR}",
+            f"--grpc_python_out={OUTPUT_DIR}",
+            f"--pyi_out={OUTPUT_DIR}",
+            f"{name}.proto",
+        ]
+        print(f"Running: {' '.join(cmd)}")
+        subprocess.check_call(cmd)
 
-    grpc_file = OUTPUT_DIR / "gripper_pb2_grpc.py"
-    text = grpc_file.read_text()
-    text = text.replace(
-        "import gripper_pb2 as gripper__pb2",
-        "from . import gripper_pb2 as gripper__pb2",
-    )
-    grpc_file.write_text(text)
+        grpc_file = OUTPUT_DIR / f"{name}_pb2_grpc.py"
+        text = grpc_file.read_text()
+        text = text.replace(
+            f"import {name}_pb2 as {name}__pb2",
+            f"from . import {name}_pb2 as {name}__pb2",
+        )
+        grpc_file.write_text(text)
     print(f"Proto files generated and fixed in {OUTPUT_DIR}/")
 
 

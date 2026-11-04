@@ -157,3 +157,58 @@ def test_key_reset_refreshes_the_servicer_episode_state(server, key):
         np.testing.assert_allclose(arm._target_pos, pos, atol=1e-9)
     finally:
         del server._arm_servicer
+
+
+# ── SIM-8: generated stubs stay in sync with the .proto files ──────────────
+
+_PKG = Path(__file__).resolve().parents[1]
+
+
+def _parse_proto(text):
+    """{message: {field: number}} and {rpc: (request, response)} from a proto3
+    file — enough of the grammar for these flat files (comments stripped)."""
+    import re
+
+    text = re.sub(r"//[^\n]*", "", text)
+    messages = {
+        name: {f: int(n) for f, n in re.findall(r"\b(\w+)\s*=\s*(\d+)\s*;", body)}
+        for name, body in re.findall(r"message\s+(\w+)\s*\{([^}]*)\}", text)
+    }
+    rpcs = {name: (req, resp) for name, req, resp in
+            re.findall(r"rpc\s+(\w+)\s*\((?:stream\s+)?(\w+)\)\s*returns\s*"
+                       r"\((?:stream\s+)?(\w+)\)", text)}
+    return messages, rpcs
+
+
+@pytest.mark.parametrize("name", ["arm", "gripper"])
+def test_pb2_matches_its_proto(name):
+    import importlib
+
+    pb2 = importlib.import_module(f"openarm_gripette_simu.proto.{name}_pb2")
+    messages, rpcs = _parse_proto((_PKG / "proto" / f"{name}.proto").read_text())
+    fd = pb2.DESCRIPTOR
+    got = {m.name: {f.name: f.number for f in m.fields} for m in fd.message_types_by_name.values()}
+    assert got == messages
+    (svc,) = fd.services_by_name.values()
+    assert {m.name: (m.input_type.name, m.output_type.name) for m in svc.methods} == rpcs
+
+
+def test_generate_proto_regenerates_every_proto(tmp_path, monkeypatch):
+    import importlib.util
+    import shutil
+    import subprocess
+
+    out = tmp_path / "openarm_gripette_simu" / "proto"
+    out.mkdir(parents=True)
+    shutil.copytree(_PKG / "proto", tmp_path / "proto")
+    for f in (_PKG / "openarm_gripette_simu" / "proto").glob("*_pb2_grpc.py"):
+        shutil.copy(f, out / f.name)
+    calls = []
+    monkeypatch.setattr(subprocess, "check_call", lambda cmd: calls.append(cmd))
+    monkeypatch.chdir(tmp_path)
+    spec = importlib.util.spec_from_file_location("_genproto", _PKG / "generate_proto.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.main()
+    compiled = {a for cmd in calls for a in cmd if a.endswith(".proto")}
+    assert compiled == {p.name for p in (_PKG / "proto").glob("*.proto")}

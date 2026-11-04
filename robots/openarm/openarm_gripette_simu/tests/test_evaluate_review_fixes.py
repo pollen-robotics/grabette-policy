@@ -279,3 +279,50 @@ def test_grip_gain_respects_the_service_limits(ev, g1, g2):
 def test_grip_gain_one_is_still_the_identity(ev):
     # Gain 1.0 must stay a pure pass-through (sign conventions vary by model).
     assert ev.apply_grip_gain(-1.55, 1.7, 1.0, (0.0, 0.0)) == (-1.55, 1.7)
+
+
+# ── main() with a fake loaded policy (no checkpoint, no server) ────────────
+
+class _ReachedConnect(Exception):
+    """main() got past model loading to the gRPC connection."""
+
+
+class _FakeLoadedPolicy:
+    def __init__(self, state_dim, action_dim):
+        self.config = SimpleNamespace(
+            type="diffusion", n_action_steps=8,
+            robot_state_feature=SimpleNamespace(shape=(state_dim,)),
+            action_feature=SimpleNamespace(shape=(action_dim,)))
+
+    def to(self, _device):
+        return self
+
+    def eval(self):
+        return self
+
+
+def run_main_loaded(ev, monkeypatch, argv, state_dim=2, action_dim=11):
+    """main() with a fake policy; stops at the first gRPC channel."""
+    def _no_channel(_addr):
+        raise _ReachedConnect
+    monkeypatch.setattr(ev, "_load_policy_any",
+                        lambda _c: _FakeLoadedPolicy(state_dim, action_dim))
+    monkeypatch.setattr(ev, "make_pre_post_processors",
+                        lambda *a, **k: (lambda b: b, SimpleNamespace(steps=[])))
+    monkeypatch.setattr(ev.grpc, "insecure_channel", _no_channel)
+    monkeypatch.setattr("sys.argv", ["evaluate.py", "--device", "cpu", "--checkpoint",
+                                     "/nonexistent", "--grasp_projection", "off",
+                                     "--chunk_relative", "off", *argv])
+    ev.main()
+
+
+# ── SIM-8: --joint_mode needs an RPC no arm.proto defines ──────────────────
+
+def test_joint_space_checkpoint_is_refused_before_connecting(ev, monkeypatch):
+    with pytest.raises(SystemExit, match="SendJointCommand"):
+        run_main_loaded(ev, monkeypatch, [], state_dim=9, action_dim=9)
+
+
+def test_cartesian_checkpoint_still_connects(ev, monkeypatch):
+    with pytest.raises(_ReachedConnect):
+        run_main_loaded(ev, monkeypatch, [])

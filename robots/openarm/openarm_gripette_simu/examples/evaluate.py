@@ -2163,6 +2163,17 @@ def main():
     # ---- Connect to simulator ----
     from openarm_gripette_simu.proto import arm_pb2, arm_pb2_grpc, gripper_pb2, gripper_pb2_grpc
 
+    if joint_mode and not hasattr(arm_pb2, "JointCommand"):
+        # The joint-space path calls ArmService.SendJointCommand, which no
+        # arm.proto defines (sim or real): it would die with an AttributeError
+        # at the first step, after the arm was already reset. Fail up front.
+        raise SystemExit(
+            "This checkpoint emits 9D joint-space actions, which need "
+            "ArmService.SendJointCommand — not defined in arm.proto, so neither "
+            "the sim nor the real arm server can execute them. Evaluate an 11D "
+            "Cartesian (or 8D chunk-relative) checkpoint instead."
+        )
+
     arm_channel = grpc.insecure_channel(args.arm_addr)
     arm_stub = arm_pb2_grpc.ArmServiceStub(arm_channel)
     gripper_channel = grpc.insecure_channel(args.gripper_addr)
