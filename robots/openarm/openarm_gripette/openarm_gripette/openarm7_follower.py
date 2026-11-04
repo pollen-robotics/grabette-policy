@@ -24,6 +24,7 @@ motors (7 here vs. 8 for the standard OpenArm).
 """
 
 import logging
+import math
 from functools import cached_property
 
 from lerobot.lerobot_types import RobotAction, RobotObservation
@@ -164,6 +165,13 @@ class OpenArm7Follower(OpenArmFollower):
             for key, val in action.items()
             if key.endswith(".pos")
         }
+
+        # 0. Refuse non-finite goals. The clip below would turn NaN into the
+        #    UPPER limit (`max(lo, min(hi, nan)) == hi`) and drive the joint
+        #    into its stop, so nothing non-finite may reach the bus.
+        bad = {name: val for name, val in urdf_goal.items() if not math.isfinite(val)}
+        if bad:
+            raise ValueError(f"Refusing non-finite joint goal(s): {bad}")
 
         # 1. Clip in URDF space (joint_limits are URDF-correct degrees).
         for motor_name, position in urdf_goal.items():

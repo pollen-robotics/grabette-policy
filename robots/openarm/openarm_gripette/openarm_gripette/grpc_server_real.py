@@ -501,6 +501,15 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
             else:
                 target_joints = HOME_JOINTS_RAD.copy()
 
+            # Refuse NaN/inf BEFORE pausing the interpolator or touching the
+            # motors: the driver's joint-limit clip maps NaN to the UPPER limit,
+            # so a NaN target would ramp every joint into its upper stop.
+            if not np.all(np.isfinite(target_joints)):
+                return arm_pb2.ResetResponse(
+                    success=False,
+                    error=f"non-finite Reset joint target: {target_joints.tolist()}",
+                )
+
             self._interp_enabled = False
             try:
                 with self._cmd_lock:
