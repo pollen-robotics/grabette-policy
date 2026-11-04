@@ -147,7 +147,14 @@ def apply_grip_gain(g1, g2, gain, ref):
         return float(g1), float(g2)
     g1 = ref[0] + gain * (g1 - ref[0])
     g2 = ref[1] + gain * (g2 - ref[1])
-    return float(np.clip(g1, -1.6, 1.6)), float(np.clip(g2, -1.6, 1.6))
+    # Symmetric (sign-agnostic) bound at 1.6 rad, but never past the gripper
+    # service's own joint limit: the proximal limit is radians(85) = 1.4835,
+    # and an out-of-range goal is REJECTED by the real gripper (it keeps its
+    # old goal), so the gained close would silently never happen. Same float32
+    # margin as GripAssist.
+    b1 = min(1.6, GRIPPER_LIMITS[0][1] - GripAssist._LIMIT_MARGIN)
+    b2 = min(1.6, GRIPPER_LIMITS[1][1] - GripAssist._LIMIT_MARGIN)
+    return float(np.clip(g1, -b1, b1)), float(np.clip(g2, -b2, b2))
 
 
 # Gripper joint limits in ROBOT FRAME, mirroring the AUTHORITY —

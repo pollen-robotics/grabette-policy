@@ -262,3 +262,20 @@ def test_no_generation_sees_a_duplicated_obs_pair(ev, max_ticks):
     assert not dup, f"generations from a duplicated pair: {dup} of {later}"
     if max_ticks > 1:
         assert len(arm.deltas) > 15, "catch-up never sent more than one tick/iteration"
+
+
+# ── EV-5: --grip_gain must stay inside what the gripper service accepts ────
+
+@pytest.mark.parametrize("g1,g2", [(1.3, 1.9), (-1.3, 1.9)])   # +/- closing models
+def test_grip_gain_respects_the_service_limits(ev, g1, g2):
+    import struct
+    p, d = ev.apply_grip_gain(g1, g2, 1.5, (0.0, 0.0))
+    for value, (_lo, hi) in zip((p, d), ev.GRIPPER_LIMITS):
+        on_wire = struct.unpack("f", struct.pack("f", value))[0]
+        assert -hi <= on_wire <= hi, f"{on_wire} outside +/-{hi}"
+    assert abs(p) > 1.4 and abs(d) > 1.5            # still a deep close, just bounded
+
+
+def test_grip_gain_one_is_still_the_identity(ev):
+    # Gain 1.0 must stay a pure pass-through (sign conventions vary by model).
+    assert ev.apply_grip_gain(-1.55, 1.7, 1.0, (0.0, 0.0)) == (-1.55, 1.7)
