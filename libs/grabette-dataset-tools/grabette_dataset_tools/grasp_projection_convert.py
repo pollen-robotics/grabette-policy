@@ -75,6 +75,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+import warnings
 from pathlib import Path
 
 import click
@@ -313,6 +314,7 @@ def convert_dataset(
 
     gp = GraspProjection()
     reports = []
+    mismatched = []      # episodes whose state gripper is not a copy of the action's
     for pf in sorted((dst_root / "data").rglob("*.parquet")):
         table = pq.read_table(pf)
         actions = np.array(table.column("action").to_pylist(), dtype=np.float32)
@@ -321,6 +323,13 @@ def convert_dataset(
 
         for ep in np.unique(eps):
             m = eps == ep
+            # The state gripper below is REBUILT from the action gripper columns,
+            # which is only right while state is a same-frame copy of action (true
+            # of every dataset so far). Flag, don't fix: a measured state gripper
+            # would otherwise be replaced without a word.
+            diff = np.abs(states[m][:, [s_ip, s_id]] - actions[m][:, [a_ip, a_id]]).max()
+            if diff > 1e-6:
+                mismatched.append((int(ep), float(diff)))
             a_pair, s_pair, rep = convert_episode(
                 actions[m, a_ip].tolist(), actions[m, a_id].tolist(), gp, rest_is_closed
             )
@@ -339,6 +348,16 @@ def convert_dataset(
                 cols[c] = table.column(c)
         pq.write_table(pa.table(cols), pf)
         logger.info("  rewrote %s (%d rows)", pf.name, len(actions))
+
+    if mismatched:
+        warnings.warn(
+            f"{len(mismatched)} episode(s) have an observation.state gripper that "
+            f"differs from the action gripper (max {max(d for _, d in mismatched):.4f} "
+            f"rad, first episode {mismatched[0][0]}); it was REPLACED by the "
+            "encoding of the action gripper. If the state is measured, this "
+            "conversion is wrong for it.",
+            UserWarning, stacklevel=2,
+        )
 
     # Rename the two channels so the new meaning is visible in the metadata
     # rather than implied. Shapes are unchanged.

@@ -249,9 +249,11 @@ def test_stale_relative_stats_provenance_is_dropped(tmp_path):
     assert "action" in st and "observation.state" in st, "unrelated keys must survive"
 
 
-def make_raw_dataset(tmp_path, n_ep=2):
+def make_raw_dataset(tmp_path, n_ep=2, state_offset=0.0):
     """Minimal on-disk dataset in the RAW layout: 8-D action and state whose
-    gripper channels are angles in radians (closure up to ~1.6)."""
+    gripper channels are angles in radians (closure up to ~1.6). The state is
+    a same-frame copy of the action, as in every existing dataset, unless
+    `state_offset` is set (a measured state that differs from the command)."""
     import numpy as np
     import pandas as pd
 
@@ -264,8 +266,10 @@ def make_raw_dataset(tmp_path, n_ep=2):
         prox, dist = pick_and_lift()
         for i, (p, d) in enumerate(zip(prox, dist)):
             vec = np.r_[np.zeros(6), p, d].astype(np.float32)
+            state = vec.copy()
+            state[6:] += state_offset
             rows.append({"episode_index": e, "frame_index": i,
-                         "action": vec, "observation.state": vec})
+                         "action": vec, "observation.state": state})
     pd.DataFrame(rows).to_parquet(root / "data" / "chunk-000" / "file-000.parquet")
     feat = {"dtype": "float32", "shape": [8], "names": names}
     (root / "meta" / "info.json").write_text(json.dumps(
@@ -368,6 +372,25 @@ def test_no_recompute_stats_flag_skips_the_pass(tmp_path, monkeypatch):
     res = CliRunner().invoke(main, ["--src_root", str(src), "--dst_root", str(dst),
                                     "--no_recompute_stats"])
     assert res.exit_code == 0, res.output
+
+
+def test_state_action_gripper_mismatch_is_flagged(tmp_path):
+    """DT-7: the state gripper is REBUILT from the action gripper columns. That is
+    right only while state is a same-frame copy of action (true of every dataset
+    so far); a measured state gripper would be silently replaced, so say so."""
+    import warnings
+
+    from grabette_dataset_tools.grasp_projection_convert import convert_dataset
+
+    src = make_raw_dataset(tmp_path, state_offset=0.05)
+    with pytest.warns(UserWarning, match="observation.state"):
+        convert_dataset(src, tmp_path / "out")
+
+    # The usual case stays silent.
+    src2 = make_raw_dataset(tmp_path / "b")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        convert_dataset(src2, tmp_path / "out2")
 
 
 def test_dropping_provenance_is_a_no_op_when_absent(tmp_path):
