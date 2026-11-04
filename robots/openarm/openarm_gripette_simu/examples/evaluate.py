@@ -56,6 +56,7 @@ def _load_policy_any(checkpoint: str):
     return policy
 from scipy.spatial.transform import Rotation
 from openarm_gripette_simu.rotation import (
+    delta_6d_to_matrix,
     rotation_6d_to_matrix as rotation_6d_to_rotation_matrix_numpy,
     rotation_matrix_to_6d as rotation_matrix_to_rotation_6d_numpy,
 )
@@ -107,7 +108,15 @@ def clamp_delta(delta_pos, delta_rot_6d, clamp_pos_m, clamp_rot_rad):
             delta_pos = delta_pos * (clamp_pos_m / n)
             was = True
     if clamp_rot_rad is not None:
-        R = rotation_6d_to_rotation_matrix_numpy(delta_rot_6d.reshape(1, 6))[0]
+        # Decode exactly as the arm server does. A degenerate (near-zero) 6D is
+        # a "hold" that the server applies as NO rotation; plain Gram-Schmidt
+        # would turn it into an arbitrary rotation, which the cap below would
+        # then re-encode at unit norm — a real rotation the server applies
+        # (and an exactly-zero 6D made Rotation.from_matrix raise). Pass holds
+        # through untouched.
+        R, degenerate = delta_6d_to_matrix(delta_rot_6d)
+        if degenerate:
+            return delta_pos, delta_rot_6d, was
         rotvec = Rotation.from_matrix(R).as_rotvec()
         ang = float(np.linalg.norm(rotvec))
         if ang > clamp_rot_rad:
