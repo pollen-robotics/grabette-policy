@@ -71,6 +71,27 @@ def _pose_T(action):
     return T
 
 
+def pick_cube_frame(acts):
+    """Index of the frame whose gripper pocket marks where the cube is.
+
+    Episodes END holding the lifted cube, so the grasp is the LAST closed run:
+    walk back from the final frame while the proximal stays at least half as
+    closed as it ends, and take the frame where that run began (the arm is
+    static while the fingers close, so that pose is the grasp pose). The
+    global most-closed frame is wrong for release episodes (they START closed,
+    at home) and recover episodes (the deliberate miss can close deeper).
+    Raw data closes proximal NEGATIVE. Falls back to the most-closed frame if
+    the episode does not end closed (e.g. hover)."""
+    prox = acts[:, 6]
+    if prox[-1] > -0.05:                         # not holding anything at the end
+        return int(np.argmin(prox))
+    closed = prox <= 0.5 * prox[-1]
+    g = len(prox) - 1
+    while g > 0 and closed[g - 1]:
+        g -= 1
+    return g
+
+
 def replay_on_arm(ds, n_show, speed):
     """Replay the recorded oak_l trajectory on the full arm (per-frame IK +
     physics), placing the cube at the trajectory-implied grasp point so the grasp
@@ -96,7 +117,7 @@ def replay_on_arm(ds, n_show, speed):
         # Place the cube where the trajectory implies it: at the most-closed
         # frame, the gripper pocket (GRASP_OFFSET_BODY in the oak_l frame) is on
         # the cube. Keep it on the table (z = CUBE_START_Z).
-        g = int(np.argmin(acts[:, 6]))            # most-negative proximal = most closed
+        g = pick_cube_frame(acts)
         Rg = Rotation.from_rotvec(acts[g, 3:6]).as_matrix()
         cube_xy = (Rg @ GRASP_OFFSET_BODY + acts[g, :3])[:2]
         sim.data.qpos[cube_qadr:cube_qadr + 3] = (cube_xy[0], cube_xy[1], CUBE_START_Z)

@@ -40,3 +40,38 @@ def test_sample_init_joints_puts_the_control_frame_at_home():
     # recipe this replaces left oak_l ~40 mm off because BODY_TO_CAMERA is the
     # identity while the URDF's camera site sits 40 mm / 20 deg from oak_l.
     assert err_mm < 20.0, f"oak_l {err_mm:.1f} mm from the sampled home"
+
+
+# ── EV-10: replay --arm must place the cube at the REAL grasp ──────────────
+
+def _episode(prox_segments):
+    """Synthetic 8-D raw episode: x advances 1 cm per frame (so each frame's
+    pose is distinct) and proximal follows the given (value, n_frames)
+    segments. Raw data closes proximal NEGATIVE."""
+    prox = np.concatenate([np.full(n, v, float) for v, n in prox_segments])
+    acts = np.zeros((len(prox), 8))
+    acts[:, 0] = 0.01 * np.arange(len(prox))
+    acts[:, 6] = prox
+    return acts
+
+
+def test_cube_frame_of_a_release_episode_is_the_final_grasp():
+    """Release episodes START closed (more closed than the grasp), then open,
+    approach, close on the cube and lift."""
+    mod = _load("replay_dataset")
+    acts = _episode([(-1.2, 10), (0.0, 30), (-0.8, 20)])
+    assert mod.pick_cube_frame(acts) == 40
+
+
+def test_cube_frame_of_a_recover_episode_is_the_second_grasp():
+    """Recover episodes close once on a deliberate miss (here MORE closed: the
+    jaws met nothing), reopen, reposition, and close for real."""
+    mod = _load("replay_dataset")
+    acts = _episode([(0.0, 10), (-1.0, 8), (0.0, 12), (-0.7, 15)])
+    assert mod.pick_cube_frame(acts) == 30
+
+
+def test_cube_frame_of_a_normal_episode_is_unchanged():
+    mod = _load("replay_dataset")
+    acts = _episode([(0.0, 25), (-0.9, 20)])
+    assert mod.pick_cube_frame(acts) == 25
