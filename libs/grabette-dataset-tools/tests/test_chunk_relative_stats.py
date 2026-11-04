@@ -59,12 +59,22 @@ def quantile_normalise(arr, stats):
 
 
 def relative_actions_of(root, chunk_size):
+    """The relative actions TRAINING feeds the normaliser, built independently.
+
+    LeRobotDataset samples every frame as a start and clamps the chunk's indices
+    to the episode end (`max(ep_start, min(ep_end - 1, idx + delta))` in
+    lerobot's dataset_reader), so the tail is padded with the last frame — and
+    pi05 ignores `action_is_pad`, so those padded rows ARE trained on.
+    (This used `range(0, n - K, K)`, the enumeration the module calls a bug.)
+    """
     df = pd.read_parquet(root / "data" / "chunk-000" / "file-000.parquet")
     out = []
     for _e, g in df.groupby("episode_index"):
         a = np.stack(g["action"].to_numpy()).astype(np.float64)
-        for t in range(0, max(len(a) - chunk_size, 0), chunk_size):
-            out.append(to_chunk_relative(a[t:t + chunk_size])[0])
+        n = len(a)
+        for t in range(n):
+            idx = np.minimum(np.arange(t, t + chunk_size), n - 1)
+            out.append(to_chunk_relative(a[idx])[0])
     return np.concatenate(out).astype(np.float64)
 
 
@@ -149,9 +159,24 @@ def test_write_is_idempotent(tmp_path):
     assert first == second
 
 
-def test_a_chunk_longer_than_every_episode_is_refused(tmp_path):
-    """Silently producing stats from zero chunks would normalise everything to
-    garbage."""
+def test_stats_match_lerobot_enumeration(tmp_path):
+    """DT-5: the stats must describe what training feeds the normaliser — every
+    start, padded tail included. Non-overlapping unpadded chunks shifted q01/q99
+    by up to ~8% of the span on the real pick3 / sugar_cup data."""
+    root, _ = make_dataset(tmp_path)
+    stats, rep = relative_action_stats(root, chunk_size=50)
+    ref = relative_actions_of(root, 50)
+    for key, q in (("q01", 0.01), ("q99", 0.99)):
+        assert np.allclose(stats[key], np.quantile(ref, q, axis=0), atol=1e-6), key
+    assert np.allclose(stats["mean"], ref.mean(0), atol=1e-6)
+    assert rep["chunks"] == 4 * 60, "one chunk per frame"
+
+
+def test_short_episode_included(tmp_path):
+    """An episode shorter than the chunk is still trained on (padded), so it must
+    contribute to the stats; it used to be dropped silently."""
     root, _ = make_dataset(tmp_path, t=20)
-    with pytest.raises(ValueError, match="no chunk"):
-        relative_action_stats(root, chunk_size=200)
+    stats, rep = relative_action_stats(root, chunk_size=50)
+    assert rep["chunks"] == 4 * 20
+    assert np.allclose(stats["q99"], np.quantile(relative_actions_of(root, 50), 0.99, 0),
+                       atol=1e-6)
