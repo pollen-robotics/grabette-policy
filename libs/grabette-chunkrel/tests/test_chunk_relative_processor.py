@@ -64,6 +64,24 @@ def test_disabled_is_a_passthrough():
     assert torch.equal(out, act)
 
 
+def test_bf16_round_trip():
+    """DT-3: pi05 runs in bf16 / autocast, and `.numpy()` has no bfloat16, so both
+    steps used to raise `TypeError: Got unsupported ScalarType BFloat16`."""
+    act = make_batch(b=2).to(torch.bfloat16)
+    fwd = ChunkRelativeActionsStep()
+    inv = AbsoluteFromChunkRelativeStep(relative_step=fwd)
+    rel = fwd(transition(act))[TransitionKey.ACTION]
+    out = inv(transition(rel))[TransitionKey.ACTION]
+    assert rel.dtype == out.dtype == torch.bfloat16
+    # bf16 keeps ~3 significant digits: positions ~2 m resolve to ~1e-2.
+    assert torch.allclose(out.float(), act.float(), atol=2e-2)
+
+    # The deploy path takes the reference from a (possibly bf16) tensor too.
+    inv2 = AbsoluteFromChunkRelativeStep()
+    inv2.set_reference(act[0, 0, :6])
+    assert inv2(transition(rel[:1]))[TransitionKey.ACTION].dtype == torch.bfloat16
+
+
 def test_dtype_and_device_are_preserved():
     act = make_batch()
     out = ChunkRelativeActionsStep()(transition(act))[TransitionKey.ACTION]

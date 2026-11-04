@@ -75,7 +75,9 @@ class ChunkRelativeActionsStep(ProcessorStep):
         # makes the step self-contained.
         self._last_reference = action[:, 0, :6].detach().clone()
 
-        arr = action.detach().cpu().numpy().astype(np.float64)
+        # Upcast in torch BEFORE .numpy(): numpy has no bfloat16, so a bf16 /
+        # autocast action would raise here. The output is cast back below.
+        arr = action.detach().cpu().to(torch.float64).numpy()
         out, jumps, rot_jumps = [], 0, 0
         for chunk in arr:
             rel, rep = to_chunk_relative(
@@ -136,6 +138,9 @@ class AbsoluteFromChunkRelativeStep(ProcessorStep):
 
     def set_reference(self, pose: torch.Tensor | np.ndarray) -> None:
         """Set the absolute pose the next conversion is relative to (6D)."""
+        if isinstance(pose, torch.Tensor):
+            # np.asarray() cannot read a bf16 tensor; convert in torch instead.
+            pose = pose.detach().cpu().to(torch.float32)
         self.reference = torch.as_tensor(np.asarray(pose, dtype=np.float32))
 
     def _resolve_reference(self, batch: int) -> torch.Tensor | None:
@@ -174,8 +179,9 @@ class AbsoluteFromChunkRelativeStep(ProcessorStep):
                 "the reference does not belong to these chunks"
             )
 
-        arr = act.detach().cpu().numpy().astype(np.float64)
-        ref_np = ref.detach().cpu().numpy().astype(np.float64)
+        # float64 in torch first: numpy has no bfloat16 (see the forward step).
+        arr = act.detach().cpu().to(torch.float64).numpy()
+        ref_np = ref.detach().cpu().to(torch.float64).numpy()
         out = [from_chunk_relative(c, r, rot=self.rot) for c, r in zip(arr, ref_np)]
         res = torch.as_tensor(np.stack(out), dtype=action.dtype, device=action.device)
 
