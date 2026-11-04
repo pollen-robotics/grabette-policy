@@ -1095,8 +1095,12 @@ def build_observation(
 ):
     """Build the full observation (camera image + state) for one step.
 
-    Returns (camera_image, state, frame_ts_ms)."""
+    Returns (camera_image, state, frame_ts_ms, gripper_angles). gripper_angles
+    is the MEASURED (proximal, distal) in radians even when the state carries
+    the grasp projection's (strategy, closure) — consumers comparing against
+    sent joint goals (GripAssist's lag test) need angles, not the encoding."""
     camera_image, gripper_joints, frame_ts_ms = camera.get()
+    gripper_angles = tuple(float(v) for v in gripper_joints[:2])
 
     if grasp_projection is not None:
         # The policy was TRAINED on (strategy, closure) proprioception, so the
@@ -1122,7 +1126,7 @@ def build_observation(
     else:
         state = gripper_joints
 
-    return camera_image, state, frame_ts_ms
+    return camera_image, state, frame_ts_ms, gripper_angles
 
 
 def run_episode(
@@ -1224,7 +1228,7 @@ def run_episode(
         prev_loop_start = loop_start
 
         # --- Observe ---
-        camera_image, state, frame_ts_ms = build_observation(
+        camera_image, state, frame_ts_ms, gripper_angles = build_observation(
             arm_stub,
             arm_pb2,
             camera,
@@ -1493,8 +1497,11 @@ def run_episode(
             # approach and any already-good grasp are never perturbed.
             _load = camera.get_load()
             _model_grip = (gg1, gg2)
+            # meas MUST be joint angles like the commands: with the grasp
+            # projection on, state[-2:] is (strategy, closure), and the
+            # |angle - closure| "lag" read as a permanent stall.
             gg1, gg2 = grip_assist.update((gg1, gg2), _load, step,
-                                          meas=tuple(state[-2:]))
+                                          meas=gripper_angles)
             if assist_log is not None:
                 # Structured per-tick trace: everything needed to reconstruct a
                 # grasp attempt offline (why it engaged or didn't, what it sent,
