@@ -18,12 +18,21 @@ _EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 def _load(name):
     """Import examples/<name>.py (it resolves its sibling imports itself, or
-    via the examples dir we put on sys.path here)."""
-    if str(_EXAMPLES) not in sys.path:
-        sys.path.insert(0, str(_EXAMPLES))
-    spec = importlib.util.spec_from_file_location(f"_ex_{name}", _EXAMPLES / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    via the examples dir put on sys.path for the duration of the import).
+
+    sys.path is restored afterwards (in full: several scripts also insert
+    their own dir at import): other suites in the same pytest run (the
+    reBot's) have example scripts with the SAME bare names, e.g.
+    cartesian_square, and a leftover sys.path[0] entry made their
+    `import cartesian_square` load the OpenArm one."""
+    saved = list(sys.path)
+    sys.path.insert(0, str(_EXAMPLES))
+    try:
+        spec = importlib.util.spec_from_file_location(f"_ex_{name}", _EXAMPLES / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = saved
     return module
 
 
