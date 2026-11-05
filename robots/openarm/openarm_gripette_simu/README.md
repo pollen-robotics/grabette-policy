@@ -255,6 +255,31 @@ uv run python examples/replay_dataset.py --repo_id user/sim_grabette_grasp --arm
 
 ## Evaluate a trained policy
 
+**`examples/evaluate.py` drives either arm.** It reaches the robot only over
+gRPC, and the ArmService is the same class for the OpenArm, the reBot and the
+simulator, so nothing in the loop is arm-specific. It asks the SERVER how many
+joints the arm has (`len(GetArmState.joint_positions)`) rather than taking a
+flag — a flag could disagree with the thing being driven, and the failure would
+be a wrong-width command rather than an error. `--home_joints` takes one value
+per joint and its count is checked against that.
+
+One place the joint count genuinely matters. The width of an action vector is
+the only evidence of what its numbers mean:
+
+| width | meaning |
+|---|---|
+| 11D | Cartesian per-step deltas — portable across arms |
+| `arm_dof + 2` | joint space — 9D on the OpenArm, **8D on the reBot** |
+| 8D | chunk-relative — Cartesian, so 8D on any arm |
+
+On a 6-DoF arm those last two collide. The readings are not close: six joint
+angles read as chunk-relative become three metres of translation and a rotation
+vector. So where 8D is ambiguous, `resolve_action_space` asks the checkpoint's
+own preprocessor config — evidence, not a guess — and **refuses** when that
+cannot answer, naming both readings and the flag that settles it. Nothing about
+the 7-DoF behaviour changes.
+
+
 `examples/evaluate.py` loads a trained policy (Diffusion / ACT / Pi0…, the type
 is auto-detected from its `config.json`) and drives the arm over gRPC for N
 episodes, reporting grasp success. The policy must have been trained on the
