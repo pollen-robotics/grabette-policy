@@ -182,13 +182,13 @@ robot:
 - Manual control:
   ```bash
   uv run python examples/set_arm_torque.py --arm_addr <robot-ip>:50052 --off   # arm falls!
-  uv run python examples/set_arm_torque.py --arm_addr <robot-ip>:50052 --on    # enabled but limp — Reset to home next
+  uv run python examples/set_arm_torque.py --arm_addr <robot-ip>:50052 --on    # enabled, holds the current pose
   ```
 - Stopping the **server** (Ctrl+C) also disables torque on disconnect. The Damiao disable frames are fire-and-forget (a motor that misses one silently stays powered), so the server sends a redundant double-pass; if a joint still holds torque after the server is gone, run the direct-CAN software e-stop **on the CAN machine, with the server stopped**:
   ```bash
   uv run python examples/disable_all_motors_can.py --can_port can0
   ```
-  It also reports which motors ACK — a motor that never ACKs has a wiring/communication problem.
+  It also reports which motors answer and decodes each reply's status (disabled / still ENABLED / fault) — a motor that never answers has a wiring/communication problem.
 - None of this replaces the hardware e-stop — keep it within reach whenever the arm is powered.
 - `set_arm_torque.py --on` now **holds the current pose** (the interpolator target is set to the measured joints), so a hand-placed arm stays where you put it. Use with `evaluate.py --no_reset` to start an episode from a hand-chosen pose.
 

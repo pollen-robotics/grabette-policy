@@ -50,10 +50,11 @@ ACTUATOR GAINS
 
     kp=50 does not merely make the arm soft, it breaks the control loop: the
     simulated arm settles 55 mm from the pose it is commanded to hold, while
-    arm_service rejects any command whose target runs more than 50 mm ahead of
-    the measured pose (it reads that as contact). The guard therefore fires on
-    physics alone, before a policy has asked for anything, and episodes die at
-    random steps.
+    arm_service rejected any command whose target ran more than 50 mm ahead of
+    the measured pose (it reads that as contact). The guard therefore fired on
+    physics alone, before a policy had asked for anything, and episodes died at
+    random steps. (The cap is now 80 mm, the OpenArm's hardware-tuned value;
+    55 mm of sag would still leave it almost no margin.)
 
     THE TARGET HERE IS TRACKING, NOT FIDELITY. The real arm droops ~2.5 deg at
     the elbow and kp=150 would reproduce that nicely - but a simulator whose

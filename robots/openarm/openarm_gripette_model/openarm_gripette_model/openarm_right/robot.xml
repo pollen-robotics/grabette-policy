@@ -125,7 +125,9 @@
                 <!-- Link j7_e_2_step -->
                 <body name="j7_e_2_step" pos="0.0172 -0 0.0455" quat="0.49946 0.500539 -0.49946 -0.500539">
                   <!-- Joint from j6_a_3_step to j7_e_2_step -->
-                  <joint axis="0 0 1" name="r_wrist_roll" type="hinge" range="-0.7832396212099086 0.7875563787900914"/>
+                  <!-- HAND EDIT (2026-11-05), not from Onshape: axis flipped (+ range negated/swapped),
+                       same for r_wrist_roll_mimic, so +joint_6 turns the model like the REAL arm. -->
+                  <joint axis="0 0 -1" name="r_wrist_roll" type="hinge" range="-0.7875563787900914 0.7832396212099086"/>
                   <inertial pos="0 0 0" mass="1e-09" fullinertia="1e-09 1e-09 1e-09 0 0 0"/>
                   <!-- Part j7_e_2_step -->
                   <geom type="mesh" class="visual" pos="0.15255 0.336 0.0172" quat="0.5 0.5 0.5 -0.5" mesh="j7_e_2_step" material="j7_e_2_step_material"/>
@@ -134,7 +136,7 @@
                 <!-- Link dm_j4310_1_2_step_2 -->
                 <body name="dm_j4310_1_2_step_2" pos="0.0343 -0 0.1205" quat="0.49946 0.500539 0.49946 0.500539">
                   <!-- Joint from j6_a_3_step to dm_j4310_1_2_step_2 -->
-                  <joint axis="0 0 1" name="r_wrist_roll_mimic" type="hinge"/>
+                  <joint axis="0 0 -1" name="r_wrist_roll_mimic" type="hinge"/>
                   <inertial pos="0 0 0" mass="1e-09" fullinertia="1e-09 1e-09 1e-09 0 0 0"/>
                   <!-- Part fl6700zz_2_step -->
                   <geom type="mesh" class="visual" pos="0.15255 -0.261 -0.0343" quat="0.5 -0.5 -0.5 -0.5" mesh="fl6700zz_2_step" material="fl6700zz_2_step_material"/>
