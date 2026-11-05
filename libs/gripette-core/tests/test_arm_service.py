@@ -23,7 +23,8 @@ pytest.importorskip("placo", reason="needs the [kinematics] extra")
 
 from gripette_core.arm_service import ArmServicer  # noqa: E402
 from gripette_core.kinematics import ArmSpec, Kinematics  # noqa: E402
-from gripette_core.rotation import rotation_matrix_to_6d  # noqa: E402
+from gripette_core.rotation import (rotation_6d_to_matrix,  # noqa: E402
+                                    rotation_matrix_to_6d)
 
 
 # --------------------------------------------------------------------------- #
@@ -75,6 +76,9 @@ class FakeArm:
         # would otherwise substitute 0.0 deg and zero is a hard stop on two of
         # its joints.
         self.read_fails = False
+        # Number of further successful writes before send_command_rad raises
+        # (a bus error mid-ramp); None = never fail.
+        self.fail_after = None
 
     def get_positions(self):
         with self._lock:
@@ -84,6 +88,10 @@ class FakeArm:
 
     def send_command_rad(self, joint_angles_rad):
         with self._lock:
+            if self.fail_after is not None:
+                if self.fail_after <= 0:
+                    raise OSError("simulated bus write failure")
+                self.fail_after -= 1
             self.commands.append(np.asarray(joint_angles_rad).copy())
             if not self.stalled:
                 self.positions = np.asarray(joint_angles_rad, float).copy()
@@ -281,13 +289,99 @@ def test_reset_accepts_an_explicit_pose_of_the_right_length(rig):
     assert np.allclose(arm.get_positions(), want, atol=1e-6)
 
 
-def test_reset_with_a_wrong_length_pose_falls_back_to_home(rig):
-    """A 7-value reset sent to the 6-DoF arm must not be applied blindly."""
+@pytest.mark.parametrize("extra", [-1, +1, -5], ids=["n-1", "n+1", "n-5"])
+def test_reset_with_a_wrong_length_pose_is_refused(rig, extra):
+    """RA-16: a wrong-length pose (e.g. 7 values sent to the 6-DoF arm) must
+    be applied neither blindly NOR silently replaced by home: the client asked
+    for somewhere else. Refuse it, and do not move the arm at all."""
     servicer, arm, kin, home = rig
-    wrong = [0.1] * (len(kin.joint_names) + 1)
+    wrong = [0.1] * (len(kin.joint_names) + extra)
     resp = servicer.Reset(_ResetReq(wrong), _Ctx())
+    assert not resp.success
+    assert "0 (home)" in resp.error
+    assert arm.commands == []
+    assert servicer._interp_enabled  # nothing was paused either
+
+
+@pytest.fixture
+def fast_reset(monkeypatch):
+    """Shorten the Reset ramp so tests don't sleep 3 s (10 steps at 50 Hz)."""
+    from gripette_core import arm_service
+    monkeypatch.setattr(arm_service, "RESET_DURATION_S", 0.2)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -float("inf")])
+def test_reset_rejects_non_finite_joints(rig, fast_reset, bad):
+    """RA-1: refused before any motor write. Both drivers' joint-limit clip,
+    `max(lo, min(hi, nan))`, returns `hi`, so NaN used to ramp every joint to
+    its UPPER limit while Reset reported success."""
+    servicer, arm, _, home = rig
+    q = home.copy()
+    q[1] = bad
+    resp = servicer.Reset(_ResetReq(q.tolist()), _Ctx())
+    assert not resp.success
+    assert arm.commands == []
+
+
+@pytest.mark.parametrize("latched_before", [False, True])
+def test_failed_reset_keeps_motion_frozen(rig, fast_reset, latched_before):
+    """RA-3: a Reset that fails mid-ramp (bus error) used to re-enable the
+    interpolator unconditionally in a `finally:` while the targets were only
+    re-synced on success, so the interpolator drove the arm BACK to the stale
+    pre-Reset target, and a latched IK-jump watchdog was silently cleared."""
+    servicer, arm, _, home = rig
+    stale = home.copy()
+    stale[0] += 0.3
+    with arm._lock:
+        arm.positions = stale.copy()
+    servicer._current_cmd_joints = stale.copy()
+    servicer._latest_target_joints = stale.copy()
+    if latched_before:
+        servicer._interp_enabled = False  # IK-jump watchdog latch
+
+    goal = stale.copy()
+    goal[0] -= 0.8
+    arm.fail_after = 3  # ramp dies after 3 writes
+    resp = servicer.Reset(_ResetReq(goal.tolist()), _Ctx())
+    assert not resp.success
+    assert not servicer._interp_enabled
+
+    # The interpolator must not resume streaming toward the stale target.
+    arm.fail_after = None
+    q_stopped = arm.get_positions()
+    n = len(arm.commands)
+    _settle(0.15)
+    assert len(arm.commands) == n
+    assert np.allclose(arm.get_positions(), q_stopped)
+
+
+def test_torque_off_preempts_reset(rig, monkeypatch):
+    """RA-2: SetTorque(False) is the client-side e-stop (2 s client timeout).
+    Reset used to hold _cmd_lock through its whole 3 s ramp, so the torque-off
+    blocked until the ramp finished and the client timed out."""
+    from gripette_core import arm_service
+    monkeypatch.setattr(arm_service, "RESET_DURATION_S", 2.0)
+    servicer, arm, _, home = rig
+    result = {}
+    th = threading.Thread(
+        target=lambda: result.setdefault(
+            "r", servicer.Reset(_ResetReq((home + 0.2).tolist()), _Ctx())))
+    th.start()
+    _settle(0.2)
+    assert th.is_alive() and arm.commands, "ramp not in progress"
+
+    t0 = time.monotonic()
+    resp = servicer.SetTorque(type("R", (), {"enable": False})(), _Ctx())
+    latency = time.monotonic() - t0
+    n_at_off = len(arm.commands)
+    th.join(timeout=3.0)
+
     assert resp.success
-    assert np.allclose(arm.get_positions(), home, atol=1e-6)
+    assert latency < 0.15, f"torque-off waited {latency:.2f}s for the Reset ramp"
+    assert arm.torque_calls == [False]
+    assert len(arm.commands) <= n_at_off + 1  # ramp stopped
+    assert not result["r"].success  # the aborted Reset reports failure
+    assert not servicer._interp_enabled  # and does not re-arm the interpolator
 
 
 def test_reset_ramps_rather_than_jumping(rig):
@@ -357,3 +451,92 @@ def test_the_interp_thread_survives_a_failing_read(rig):
     arm.read_fails = False
     _settle(0.2)
     assert arm.commands, "interpolator never resumed after the read recovered"
+
+
+def test_the_interp_tick_reads_the_command_slot_once(rig, caplog):
+    """RA-12: SetTorque(False) sets `_current_cmd_joints = None` from another
+    thread. A tick that re-reads the attribute between its None-check and the
+    arithmetic then does `None + ...` and skips. Simulated deterministically
+    with a slot that reads back None on every second access: a tick taking ONE
+    local copy is immune; one that reads it three times always trips."""
+    _, arm, kin, home = rig
+
+    class _RacySlot(ArmServicer):
+        @property
+        def _current_cmd_joints(self):
+            self._slot_reads = getattr(self, "_slot_reads", 0) + 1
+            return None if self._slot_reads % 2 == 0 else self._slot
+
+        @_current_cmd_joints.setter
+        def _current_cmd_joints(self, value):
+            self._slot = value
+
+    servicer = _RacySlot(arm, kin, home, start_time=0.0,
+                         interp_hz=200.0, interp_alpha=1.0)
+    try:
+        caplog.set_level("WARNING", logger="gripette_core.arm_service")
+        servicer._current_cmd_joints = home.copy()
+        servicer._latest_target_joints = home.copy()
+        _settle(0.1)
+        assert arm.commands, "interpolator sent nothing"
+        skipped = [r for r in caplog.records if "Interp tick skipped" in r.getMessage()]
+        assert not skipped, skipped[0].getMessage()
+    finally:
+        servicer.stop()
+
+
+# --------------------------------------------------------------------------- #
+# IK-jump watchdog edge cases
+# --------------------------------------------------------------------------- #
+
+class _JumpKin:
+    """Real FK, but IK always returns a fixed (branch-flipped) solution."""
+
+    def __init__(self, kin, solution):
+        self._kin = kin
+        self.joint_names = kin.joint_names
+        self.solution = np.asarray(solution, dtype=float)
+
+    def forward(self, q):
+        return self._kin.forward(q)
+
+    def inverse(self, target_tf, current_joint_positions=None):
+        return self.solution.copy()
+
+
+def _flip(q):
+    """`q` with a 60 deg jump on the last (wrist) joint: a typical singular
+    branch flip."""
+    out = np.array(q, dtype=float)
+    out[-1] += np.deg2rad(60.0)
+    return out
+
+
+def test_first_command_is_jump_guarded(rig):
+    """RA-4: the watchdog compared against _latest_target_joints, which is
+    None until the first ACCEPTED command, so the very first command after
+    startup (or torque-off) could flip a branch unchecked."""
+    servicer, arm, kin, _ = rig
+    assert servicer._latest_target_joints is None  # fresh server, no command yet
+    servicer._kin = _JumpKin(kin, _flip(arm.get_positions()))
+    resp = servicer.SendCartesianDelta(_Delta(), _Ctx())
+    assert not resp.success
+    assert "IK jump" in resp.error
+    assert servicer._latest_target_joints is None  # nothing handed to the interpolator
+
+
+def test_latch_resync_matches_fk(rig):
+    """RA-13: on the latching violation the target is re-synced to
+    FK(measured), but the rollback then still subtracted the rejected delta
+    from that FRESH target, leaving it offset by the delta (10 mm here)."""
+    servicer, arm, kin, _ = rig
+    servicer._max_ik_jump_violations = 1
+    servicer._latest_target_joints = arm.get_positions()  # a previous accepted command
+    servicer._kin = _JumpKin(kin, _flip(arm.get_positions()))
+    rotated = [0.0, 1.0, 0.0, -1.0, 0.0, 0.0]  # 90 deg about z, also rejected
+    resp = servicer.SendCartesianDelta(_Delta(dx=0.01, dr6d=rotated), _Ctx())
+    assert not resp.success
+    assert not servicer._interp_enabled  # latched
+    fk = kin.forward(arm.get_positions())
+    assert np.allclose(servicer._target_pos, fk[:3, 3], atol=1e-6)
+    assert np.allclose(rotation_6d_to_matrix(servicer._target_r6d), fk[:3, :3], atol=1e-6)
