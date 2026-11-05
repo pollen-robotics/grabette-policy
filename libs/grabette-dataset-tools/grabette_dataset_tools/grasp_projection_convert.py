@@ -75,6 +75,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+import warnings
 from pathlib import Path
 
 import click
@@ -313,6 +314,7 @@ def convert_dataset(
 
     gp = GraspProjection()
     reports = []
+    mismatched = []      # episodes whose state gripper is not a copy of the action's
     for pf in sorted((dst_root / "data").rglob("*.parquet")):
         table = pq.read_table(pf)
         actions = np.array(table.column("action").to_pylist(), dtype=np.float32)
@@ -321,6 +323,13 @@ def convert_dataset(
 
         for ep in np.unique(eps):
             m = eps == ep
+            # The state gripper below is REBUILT from the action gripper columns,
+            # which is only right while state is a same-frame copy of action (true
+            # of every dataset so far). Flag, don't fix: a measured state gripper
+            # would otherwise be replaced without a word.
+            diff = np.abs(states[m][:, [s_ip, s_id]] - actions[m][:, [a_ip, a_id]]).max()
+            if diff > 1e-6:
+                mismatched.append((int(ep), float(diff)))
             a_pair, s_pair, rep = convert_episode(
                 actions[m, a_ip].tolist(), actions[m, a_id].tolist(), gp, rest_is_closed
             )
@@ -339,6 +348,16 @@ def convert_dataset(
                 cols[c] = table.column(c)
         pq.write_table(pa.table(cols), pf)
         logger.info("  rewrote %s (%d rows)", pf.name, len(actions))
+
+    if mismatched:
+        warnings.warn(
+            f"{len(mismatched)} episode(s) have an observation.state gripper that "
+            f"differs from the action gripper (max {max(d for _, d in mismatched):.4f} "
+            f"rad, first episode {mismatched[0][0]}); it was REPLACED by the "
+            "encoding of the action gripper. If the state is measured, this "
+            "conversion is wrong for it.",
+            UserWarning, stacklevel=2,
+        )
 
     # Rename the two channels so the new meaning is visible in the metadata
     # rather than implied. Shapes are unchanged.
@@ -366,7 +385,12 @@ def convert_dataset(
 
     _drop_stale_action_stats(dst_root)
     _write_sidecar(dst_root, gp, src_root)
-    _write_card(dst_root, repo_id=stats_repo_id)
+    # A `local/...` id only names the dataset for the stats pass; it is not a Hub
+    # repo, so it must not become a viewer link in the card.
+    card_repo_id = stats_repo_id
+    if card_repo_id and card_repo_id.startswith("local/"):
+        card_repo_id = None
+    _write_card(dst_root, repo_id=card_repo_id)
 
     # WARN, don't refuse. A converted dataset that only ever lives locally for an
     # experiment is legitimate, so publication rules must not block conversion —
@@ -416,7 +440,8 @@ def convert_dataset(
                    "meaning and RANGE, so stale stats mis-normalise training.")
 @click.option("--repo_id", default=None,
               help="repo_id to open the converted dataset under, for the stats "
-                   "pass only; the data always comes from --dst_root. A LOCAL id "
+                   "pass only; the data always comes from --dst_root. Defaults "
+                   "to local/<dst_root name>. A LOCAL id "
                    "(local/anything) is the right choice and needs no Hub access: "
                    "LeRobotDataset only queries the Hub when the root is "
                    "incomplete, and by this point it is fully written. Do NOT pass "
@@ -426,9 +451,16 @@ def convert_dataset(
 def main(src_root, dst_root, rest_is_closed, overwrite, recompute_stats, repo_id):
     """Re-express a dataset's gripper channels as (strategy, commanded closure)."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # The stats pass needs SOME repo_id to open the dataset under. Without one it
+    # used to be skipped silently, so the default `--src_root A --dst_root B`
+    # kept radian stats on the new [0, 1] channels. Fall back to a local id,
+    # which needs no Hub access (see --repo_id).
+    stats_repo_id = None
+    if recompute_stats:
+        stats_repo_id = repo_id or f"local/{Path(dst_root).name}"
     report = convert_dataset(Path(src_root), Path(dst_root),
                             rest_is_closed=rest_is_closed, overwrite=overwrite,
-                            stats_repo_id=repo_id if recompute_stats else None)
+                            stats_repo_id=stats_repo_id)
 
     n = report["episodes"]
     click.echo("")

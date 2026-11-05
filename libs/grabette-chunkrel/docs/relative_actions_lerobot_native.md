@@ -1,7 +1,8 @@
 # Chunk-relative actions: can we use LeRobot's mechanism?
 
-**Status:** design + plan, 2026-08-26. Verified against the pinned **lerobot
-0.6.0** — no version bump, no fork.
+**Status:** design + plan, 2026-08-26. Originally verified against **lerobot
+0.6.0** — no fork. The processor steps now require **lerobot 0.6.1+** (the
+workspace pin).
 
 The proposal (from the [robot-folding
 writeup](https://lerobot-robot-folding.hf.space)) is to stop baking per-step

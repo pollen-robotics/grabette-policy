@@ -18,9 +18,9 @@ in training. lerobot solves the same problem for its built-in step with
 `lerobot-edit-dataset --operation.relative_action true`; this is the equivalent
 for ours.
 
-pi05 normalises ACTION with QUANTILES, which needs `q01`/`q99` — keys lerobot's
-own `compute_stats` does not emit (see `augment_dataset_quantile_stats.py`). So
-those are computed here alongside min/max/mean/std.
+pi05 normalises ACTION with QUANTILES, which reads `q01`/`q99`. lerobot's own
+`compute_stats` does emit them (with q10/q50/q90), but over ABSOLUTE actions,
+so they are computed here, alongside min/max/mean/std, over relative ones.
 
 The stats depend on the CHUNK LENGTH: a 50-frame offset is larger than a
 15-frame one, so `--chunk-size` must match the policy's `chunk_size`.
@@ -40,23 +40,21 @@ from grabette_chunkrel.chunk_relative import to_chunk_relative
 _QUANTILES = {"q01": 0.01, "q99": 0.99}
 
 
-def _chunk_starts(n_frames: int, chunk_size: int, stride: int) -> list[int]:
-    """Chunk start indices covering EVERY frame of an episode.
+def _chunk_indices(n_frames: int, chunk_size: int, stride: int) -> list[np.ndarray]:
+    """Frame indices of each chunk TRAINING draws from an episode.
 
-    A plain `range(0, n - chunk_size, stride)` stops early and never samples the
-    last `chunk_size - 1` frames. On real episodes (~195 frames, chunk 50) that
-    silently drops ~23% of each one — and it is the TAIL, which is where the
-    grasp completes and the gripper reaches its closed range. Stats built that
-    way would under-represent exactly the phase the policy has to get right, so a
-    final window is anchored at the end.
+    Mirrors the LeRobotDataset sampler: every frame is a start, and indices past
+    the episode end are clamped to its last frame
+    (`max(ep_start, min(ep_end - 1, idx + delta))` in lerobot's dataset_reader).
+    pi05 ignores `action_is_pad`, so those padded tails are trained on and belong
+    in the stats, as do episodes shorter than `chunk_size`.
+
+    The previous enumeration (non-overlapping, unpadded chunks) never saw the
+    padded tail and dropped short episodes entirely; on the real pick3 /
+    sugar_cup datasets it shifted q01/q99 by up to ~8% of their span.
     """
-    if n_frames < chunk_size:
-        return []
-    starts = list(range(0, n_frames - chunk_size + 1, stride))
-    last = n_frames - chunk_size
-    if starts and starts[-1] != last:
-        starts.append(last)
-    return starts
+    return [np.minimum(np.arange(t, t + chunk_size), n_frames - 1)
+            for t in range(0, n_frames, stride)]
 
 
 def relative_action_stats(
@@ -67,19 +65,19 @@ def relative_action_stats(
     Args:
         root: dataset root (must contain meta/ and data/).
         chunk_size: MUST match the policy's `chunk_size`; the stats scale with it.
-        stride: chunk start spacing. Defaults to `chunk_size` (non-overlapping),
-            which samples each frame once and keeps the estimate unweighted.
+        stride: chunk start spacing. Defaults to 1, every start, which is what
+            training samples; a larger value subsamples the same distribution.
         rot: rotation encoding, as passed to the processor step.
 
     Returns:
         (stats dict for the `action` key, report dict).
 
-    Holds all relative actions in memory: 8 float64 per frame is ~2.5 MB for a
-    40k-frame dataset, so the simplicity is worth more than streaming here.
+    Holds all relative actions in memory: chunk_size x 8 float64 per frame is
+    ~130 MB for a 40k-frame dataset at chunk 50; pass `stride` if that matters.
     """
     root = Path(root)
     info = json.loads((root / "meta" / "info.json").read_text())
-    stride = stride or chunk_size
+    stride = stride or 1
 
     parquets = sorted((root / "data").rglob("*.parquet"))
     if not parquets:
@@ -92,16 +90,14 @@ def relative_action_stats(
     rel, n_jumps, n_rot_jumps, n_chunks = [], 0, 0, 0
     for _epi, g in df.groupby("episode_index"):
         a = np.stack(g["action"].to_numpy()).astype(np.float64)
-        for t in _chunk_starts(len(a), chunk_size, stride):
-            out, rep = to_chunk_relative(a[t:t + chunk_size], rot=rot)
+        for idx in _chunk_indices(len(a), chunk_size, stride):
+            out, rep = to_chunk_relative(a[idx], rot=rot)
             rel.append(out)
             n_jumps += rep["n_jumps_spliced"]
             n_rot_jumps += rep["n_rot_jumps_spliced"]
             n_chunks += 1
     if not rel:
-        raise ValueError(
-            f"no chunk of {chunk_size} frames fits any episode in {root}"
-        )
+        raise ValueError(f"no frames under {root / 'data'}")
     arr = np.concatenate(rel).astype(np.float64)
 
     stats = {

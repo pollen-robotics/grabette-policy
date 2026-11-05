@@ -189,8 +189,11 @@ def to_chunk_relative(
     if rot == "rotvec":
         rot_part = rel_rot.as_rotvec()
     else:
+        # First two ROWS, the repo's 6D convention (rotvec_to_r6d,
+        # rotation_matrix_to_rotation_6d_numpy). This used to take the first two
+        # COLUMNS, which encodes the transpose — the inverse rotation.
         m = rel_rot.as_matrix()                 # (T, 3, 3)
-        rot_part = m[:, :, :2].transpose(0, 2, 1).reshape(len(m), 6)
+        rot_part = m[:, :2, :].reshape(len(m), 6)
 
     out = np.concatenate([rel_pos, rot_part, grip], axis=1)
     return out.astype(np.float32), {
@@ -240,13 +243,17 @@ def from_chunk_relative(
 
 
 def _r6d_to_matrix(v: np.ndarray) -> np.ndarray:
-    """6D -> rotation matrices, by Gram-Schmidt on the first two columns."""
+    """6D -> rotation matrices, by Gram-Schmidt on the first two ROWS.
+
+    Same convention as `rotation_6d_to_rotation_matrix_numpy` in
+    policies/DiffusionPolicy: the basis vectors are stacked as rows (axis=-2).
+    """
     a1, a2 = v[:, :3], v[:, 3:6]
     b1 = a1 / np.linalg.norm(a1, axis=1, keepdims=True)
     a2p = a2 - (b1 * a2).sum(axis=1, keepdims=True) * b1
     b2 = a2p / np.linalg.norm(a2p, axis=1, keepdims=True)
     b3 = np.cross(b1, b2)
-    return np.stack([b1, b2, b3], axis=-1)
+    return np.stack([b1, b2, b3], axis=-2)
 
 
 def rotvec_to_r6d(rotvec: np.ndarray) -> np.ndarray:
@@ -294,6 +301,10 @@ class ChunkRelativeDeltas:
     one reference; across chunks they do not, so carrying `prev` over a boundary
     would emit the difference between two unrelated frames — a large spurious
     jump exactly when the policy re-plans.
+
+    Actions dropped from a chunk's head (eval `--skip_stale`) MUST still be fed
+    to `step()`, output discarded. Otherwise the first executed delta is the
+    whole offset a_k from the reference — a k-step jump — instead of one step.
     """
 
     def __init__(self, rot: str = "rotvec"):

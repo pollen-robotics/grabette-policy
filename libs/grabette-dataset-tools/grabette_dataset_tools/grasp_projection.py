@@ -99,6 +99,11 @@ REACHABLE_DISTAL = math.radians(102.0)
 # Guard against a zero-variance (synthetic) input in the segmenter's noise floor.
 _EPS = 1e-12
 
+# Smallest excursion (rad, ~5.7 deg) from which `normalize_closing_sign` reads a
+# direction: well above the ~1 deg zero-calibration offset, well below any real
+# close (proximal grasps sit near 48 deg).
+_SIGN_MIN_EXCURSION = 0.1
+
 # Where a converted dataset records the projection it was built with, relative to
 # the dataset root. NOT a key in meta/info.json: that file is parsed into a
 # fixed-field dataclass whose unknown keys are dropped on the next write (verified
@@ -331,12 +336,12 @@ def segment_grip(
         if sign > 0:
             hold_to = min(n, e + 1 + hold_frames)
             held = c[e + 1:hold_to]
-            if len(held) < hold_frames:
-                # Too close to the end to confirm a hold: accept only if the
-                # episode simply ends here, which is how a pick-and-lift finishes.
-                if e < n - 1 - hold_frames:
-                    continue
-            elif max(abs(v - c[e]) for v in held) > hold_tol:
+            # Near the end fewer than hold_frames frames remain (a pick-and-lift
+            # may finish there), so a full hold cannot be confirmed — but the
+            # frames that DO exist must still pass hold_tol. Skipping the test
+            # entirely accepted an end-of-episode twitch that the same check
+            # rejects mid-episode, writing a full close on rest frames.
+            if held and max(abs(v - c[e]) for v in held) > hold_tol:
                 continue
         # Refine the onset to where the motion actually becomes deliberate.
         #
@@ -482,6 +487,12 @@ def normalize_closing_sign(values: list[float]) -> tuple[list[float], bool]:
         return list(values), False
     clean = _median_filter(values, width=5)
     peak = max(clean, key=abs)
+    # A channel that never travels has no direction to read: its largest
+    # excursion is the calibration offset (~1 deg), whose sign is noise.
+    # Flipping on it gave one episode's two channels mixed conventions, so below
+    # the floor the channel is left as recorded.
+    if abs(peak) < _SIGN_MIN_EXCURSION:
+        return list(values), False
     if peak < 0:
         return [-v for v in values], True
     return list(values), False
