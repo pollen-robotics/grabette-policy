@@ -83,13 +83,17 @@ class SimulationServer:
     """MuJoCo simulation with gRPC interfaces for the Gripette and arm."""
 
     def __init__(self, scene_xml: str | Path | None = None, initial_arm_joints=None,
-                 gripper_hold_open_duration: float = 0.0):
+                 gripper_hold_open_duration: float = 0.0, seed: int | None = None):
         self._sim = Simulation(scene_xml)
         self._kin = Kinematics(orientation_weight=10.0)
         self._lock = threading.Lock()
         self._start_time = time.monotonic()
+        # One seed drives every reset draw (cube + home pose) so two evals with
+        # the same seed see the same episode sequence; None = fresh entropy.
+        # Independent child streams for the server and the ArmServicer.
+        self._seed_server, self._seed_servicer = np.random.SeedSequence(seed).spawn(2)
         # rng for the reset shortcuts
-        self._rng = np.random.default_rng()
+        self._rng = np.random.default_rng(self._seed_server)
         # Hold-open grace period after a reset. Originally added (default
         # 1.5 s) to work around the v3 model getting stuck commanding the
         # gripper closed after a reset, because that training distribution
@@ -345,7 +349,8 @@ class SimulationServer:
         # The servicer also gets a back-reference to the server so the
         # Reset RPC can call reset_episode_random() — same training-
         # distribution sampling as the keyboard 'R' shortcut.
-        self._arm_servicer = ArmServicer(self._sim, self._kin, self._lock, self._start_time, server=self)
+        self._arm_servicer = ArmServicer(self._sim, self._kin, self._lock, self._start_time, server=self,
+                                         seed=self._seed_servicer)
         arm_pb2_grpc.add_ArmServiceServicer_to_server(
             self._arm_servicer,
             self._arm_server,

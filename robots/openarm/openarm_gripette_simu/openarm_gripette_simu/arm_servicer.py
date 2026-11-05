@@ -86,12 +86,13 @@ CUBE_MOVED_THRESHOLD = 0.005
 class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
 
     def __init__(self, sim, kin: Kinematics, lock: threading.Lock, start_time: float,
-                 server=None):
+                 server=None, seed=None):
         self._sim = sim
         self._kin = kin
         self._lock = lock
         self._start_time = start_time
-        self._rng = np.random.default_rng()
+        # seed: int / SeedSequence for reproducible cube placement; None = fresh.
+        self._rng = np.random.default_rng(seed)
         # Optional back-reference to the SimulationServer. If set, the Reset
         # RPC can delegate to server.reset_episode_random() which samples a
         # cube position + arm home pose from the SAME training distribution
