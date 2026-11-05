@@ -6,6 +6,7 @@ gRPC servers run in background threads and read cached camera frames.
   - ArmService (port 50052): delta Cartesian arm control
 """
 
+import collections
 import logging
 import sys
 import time
@@ -87,6 +88,8 @@ class SimulationServer:
         self._sim = Simulation(scene_xml)
         self._kin = Kinematics(orientation_weight=10.0)
         self._lock = threading.Lock()
+        # Viewer key presses, handled by the main loop (see _key_callback).
+        self._pending_keys = collections.deque()
         self._start_time = time.monotonic()
         # One seed drives every reset draw (cube + home pose) so two evals with
         # the same seed see the same episode sequence; None = fresh entropy.
@@ -282,7 +285,15 @@ class SimulationServer:
             return (float(cx), float(cy), 0.41)
 
     def _key_callback(self, keycode: int):
-        """MuJoCo viewer key handler — R / 1 / 2 reset the scene."""
+        """MuJoCo viewer key callback (viewer thread): only queue the key.
+
+        The reset itself runs in the main loop (_handle_key). Taking the sim
+        lock here, in the viewer thread, could deadlock against the main loop,
+        which holds the sim lock while it calls viewer.sync()."""
+        self._pending_keys.append(keycode)
+
+    def _handle_key(self, keycode: int):
+        """R / 1 / 2 reset the scene (main thread, sim lock NOT held)."""
         if keycode == _KEY_R:
             self.reset_episode_random()
         elif keycode == _KEY_1:
@@ -423,10 +434,17 @@ class SimulationServer:
                     if step % camera_interval == 0:
                         self._camera_frame = self._sim.render_camera(out_size=CAMERA_OUT_SIZE)
 
-                step += 1
+                    step += 1
 
-                if viewer is not None and step % viewer_interval == 0:
-                    viewer.sync()
+                    # Under the sim lock: sync copies mjData, and a gRPC
+                    # handler (e.g. Reset's mj_forward) running at the same
+                    # time aborts MuJoCo ("mj_copyDataVisual: attempting to
+                    # copy mjData while stack is in use").
+                    if viewer is not None and step % viewer_interval == 0:
+                        viewer.sync()
+
+                while self._pending_keys:
+                    self._handle_key(self._pending_keys.popleft())
 
                 t_target = t_wall + step * dt
                 t_now = time.perf_counter()

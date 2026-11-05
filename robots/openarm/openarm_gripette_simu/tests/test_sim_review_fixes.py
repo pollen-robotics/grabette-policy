@@ -148,7 +148,7 @@ def test_key_reset_refreshes_the_servicer_episode_state(server, key):
         arm._cube_start_z = 9.0
         arm._diag_min_gap = 0.001
         arm._target_pos = arm._target_pos + 1.0              # stale integrator
-        server._key_callback(getattr(srv_mod, key))
+        server._handle_key(getattr(srv_mod, key))
         cube = server._sim.data.body("red_cube").xpos
         np.testing.assert_allclose(arm._cube_start_xy, cube[:2], atol=1e-9)
         assert abs(arm._cube_start_z - cube[2]) < 1e-9
@@ -157,6 +157,20 @@ def test_key_reset_refreshes_the_servicer_episode_state(server, key):
         np.testing.assert_allclose(arm._target_pos, pos, atol=1e-9)
     finally:
         del server._arm_servicer
+
+
+def test_key_callback_only_queues_and_never_takes_the_sim_lock(server):
+    """The viewer thread's callback must not touch the sim: the main loop holds
+    the sim lock during viewer.sync() (which copies mjData; a concurrent gRPC
+    Reset's mj_forward aborted MuJoCo), so a callback taking it could deadlock."""
+    import openarm_gripette_simu.server as srv_mod
+
+    qpos = server._sim.data.qpos.copy()
+    with server._lock:                       # as during viewer.sync()
+        server._key_callback(srv_mod._KEY_R)  # would block forever if it locked
+    np.testing.assert_array_equal(server._sim.data.qpos, qpos)
+    assert list(server._pending_keys) == [srv_mod._KEY_R]
+    server._pending_keys.clear()
 
 
 # ── SIM-8: generated stubs stay in sync with the .proto files ──────────────
