@@ -1,0 +1,91 @@
+<!--
+  reBot B601-RS + Gripette BOLTED TO A TABLE, with a cube to reach for.
+
+  THE ARM IS MOUNTED ON THE TABLE, not standing beside it. So the tabletop is
+  built DOWNWARD from z=0 and the arm's base stays at the world origin, rather
+  than raising the arm onto a surface. That direction is deliberate: Placo's
+  FK, the ArmServicer's Cartesian integrator and every pose in a recorded
+  dataset are all expressed from a base at the origin. Moving the robot to sit
+  on a table would silently offset all of them; moving the table costs nothing.
+
+      tabletop   z -0.100 .. 0.000   (the arm bolts to its top face)
+      legs       z -0.730 .. -0.100
+      floor      z -0.730
+
+  The slab is 10 cm thick to MATCH rebot_b601rs/bench.xml, the bare model the
+  real server measures its clearance gate against. That is not decoration: the
+  gate uses mj_geomDistance, which measures to the NEAREST FACE, so a link
+  driven clean through a thin plate reads as close to the underside rather
+  than deeply penetrating. A 3 cm top and a 10 cm slab gave different verdicts
+  for the same pose. Same thickness, same gate in sim and on the arm.
+
+  NOT a mirror of the OpenArm's table_red_cube.xml. This arm reaches in -x.
+  Measured from the model at the home pose 0 15 25 -10 0 0:
+
+      oak_l (control frame)   x -165.2   y   -2.9   z +370.8 mm
+      gripper_center          x -224.4   y   -2.9   z +317.8 mm
+
+  so the work area is at negative x, and the gripper sits 318 mm above the
+  table surface at home - a working height, with the cube directly under it.
+
+  TABLE EXTENT IS A GUESS; the 318 mm is not. The surface spans x -0.70..+0.10
+  so the arm is bolted 10 cm in from one edge with 70 cm of table in front of
+  it. Measure the real bench and change it - a scene that disagrees with the
+  bench is how a policy learns the wrong heights.
+
+  offwidth/offheight must cover the camera's calibration resolution (1296x972)
+  or the fisheye render is cropped.
+-->
+<mujoco model="rebot_table">
+    <include file="../../rebot_gripette_model/rebot_gripette_model/rebot_b601rs/robot.xml" />
+
+    <visual>
+        <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0" />
+        <rgba haze="0.15 0.25 0.35 1" />
+        <global azimuth="160" elevation="-20" offwidth="1296" offheight="972" />
+    </visual>
+
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512"
+            height="3072" />
+        <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4"
+            rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300" />
+        <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5"
+            reflectance="0.2" />
+
+        <texture type="2d" name="wood" builtin="flat" rgb1="0.65 0.45 0.25" rgb2="0.55 0.35 0.18"
+            mark="random" markrgb="0.60 0.40 0.22" width="256" height="256" />
+        <material name="wood" texture="wood" texrepeat="3 3" shininess="0.1" specular="0.1" />
+
+        <material name="red_cube" rgba="0.85 0.15 0.1 1" shininess="0.3" specular="0.5" />
+    </asset>
+
+    <worldbody>
+        <light pos="-0.3 0 2.5" dir="0 0 -1" directional="true" />
+
+        <!-- Floor, 73 cm below the table surface the arm is bolted to. -->
+        <geom name="floor" size="0 0 0.05" pos="0 0 -0.73" type="plane"
+            material="groundplane" />
+
+        <!-- The bench. Static geoms (no body joint): the table does not move,
+             and the arm is bolted to it. -->
+        <geom name="tabletop" type="box" size="0.40 0.35 0.05" pos="-0.30 0 -0.05"
+            material="wood" />
+        <geom name="leg_1" type="box" size="0.02 0.02 0.315" pos="0.06 0.31 -0.415"
+            material="wood" />
+        <geom name="leg_2" type="box" size="0.02 0.02 0.315" pos="-0.66 0.31 -0.415"
+            material="wood" />
+        <geom name="leg_3" type="box" size="0.02 0.02 0.315" pos="0.06 -0.31 -0.415"
+            material="wood" />
+        <geom name="leg_4" type="box" size="0.02 0.02 0.315" pos="-0.66 -0.31 -0.415"
+            material="wood" />
+
+        <!-- A 4 cm cube on the table, directly under the home-pose gripper
+             (x -0.224). Sits ON the surface: half-height above z=0. -->
+        <body name="cube" pos="-0.30 0 0.02">
+            <freejoint name="cube_free" />
+            <geom name="cube" type="box" size="0.02 0.02 0.02" material="red_cube"
+                mass="0.05" friction="1.0 0.01 0.001" />
+        </body>
+    </worldbody>
+</mujoco>

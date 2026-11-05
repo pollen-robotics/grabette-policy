@@ -1,0 +1,45 @@
+[project]
+name = "gripette-core"
+version = "0.1.0"
+description = "Shared kinematics, rotation and gRPC contract for Gripette-equipped arms"
+readme = "README.md"
+requires-python = ">=3.11"
+# Deliberately NO mujoco and NO opencv: this package is imported by the
+# real-hardware drivers, which run where the simulation stack is not installed.
+#
+# placo is NOT here either — see the [kinematics] extra. The base install is
+# the gRPC contract plus the rotation helpers, which is all a client needs
+# (examples/teleop_bridge.py is exactly that client). Keeping placo out of the
+# base is what makes `pip install gripette-core` viable on a machine with no
+# urdfdom.
+dependencies = [
+    "numpy",
+    # Floor matches the generated proto stubs (GRPC_GENERATED_VERSION=1.81.0):
+    # they refuse to import on older grpcio.
+    "grpcio>=1.81",
+    "protobuf>=4.25",
+]
+
+[project.optional-dependencies]
+# FK/IK. The cmeel pins are NOT optional decoration: placo 0.9.x is linked
+# against urdfdom 4.x / tinyxml2 10.x, and left unconstrained a resolver picks
+# cmeel-urdfdom 6.x / cmeel-tinyxml2 11.x, which ship .so.6 / .so.11 and make
+# `import placo` fail outright. The workspace root carries the same pins as
+# [tool.uv] constraint-dependencies, but that is uv-only AND root-only, so it
+# does not travel in this wheel's metadata — anyone installing gripette-core
+# outside this workspace would get the broken combination. Hence real
+# dependencies here.
+kinematics = [
+    "placo>=0.9",
+    "cmeel-urdfdom==4.0.1",
+    "cmeel-tinyxml2==10.0.0",
+]
+dev = ["grpcio-tools>=1.60"]
+test = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gripette_core"]
