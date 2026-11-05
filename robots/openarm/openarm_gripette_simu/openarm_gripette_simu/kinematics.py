@@ -6,6 +6,7 @@ keeps the historical import surface (`Kinematics`, `ARM_JOINT_NAMES`, the frame
 constants) working unchanged, so no caller had to move.
 """
 
+import numpy as np
 from gripette_core.kinematics import (  # noqa: F401  (re-exported)
     CAMERA_FRAME,
     CONTROL_FRAME,
@@ -29,12 +30,26 @@ ARM_JOINT_NAMES = [
     "r_wrist_pitch",
 ]
 
+# Hard roll limit used by IK (rad). The real driver clips joint_6 (= r_wrist_roll)
+# to +/-40 deg (RIGHT_DEFAULT_JOINTS_LIMITS in openarm_gripette's
+# config_openarm7_follower.py), tighter than the URDF's +/-44.9 deg. IK must stay
+# inside the DRIVER range, else the driver silently clips the command and the arm
+# is not where IK thinks it is. 3 deg margin so IK never parks on the stop.
+ROLL_IK_LIMIT = float(np.radians(40.0 - 3.0))
+
 OPENARM_SPEC = ArmSpec(
     model_dir=str(OPENARM_RIGHT_DIR),
     joint_names=tuple(ARM_JOINT_NAMES),
-    # Gripper fingers and the wrist-roll mimic: present in the URDF, but the
-    # IK must not drive them or it would "reach" by closing the hand.
-    masked_dofs=("proximal", "distal", "r_wrist_roll_mimic"),
+    # Gripper fingers: present in the URDF, but the IK must not drive them or
+    # it would "reach" by closing the hand.
+    masked_dofs=("proximal", "distal"),
+    # In the URDF, r_wrist_roll's own child is a side branch; the joint that
+    # carries the wrist pitch and the whole gripper/camera chain is
+    # r_wrist_roll_mimic (<mimic multiplier="-1"/>). MuJoCo ties them with an
+    # equality, mimic = -roll. Masking the mimic instead (the old setup) made
+    # FK blind to r_wrist_roll and IK never moved it (SIM-1).
+    mimic_joints=(("r_wrist_roll_mimic", "r_wrist_roll", -1.0),),
+    joint_limits=(("r_wrist_roll", -ROLL_IK_LIMIT, ROLL_IK_LIMIT),),
 )
 
 

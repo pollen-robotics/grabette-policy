@@ -33,6 +33,11 @@ def main():
              "the default is now 0 (no override). Bump to 1.5 if you ever "
              "train a model again that gets stuck closed after a reset.",
     )
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help="Seed every reset draw (cube position, home pose) so two runs "
+             "with the same seed see the same episodes. Default: unseeded.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -41,6 +46,7 @@ def main():
         scene_xml=args.scene,
         initial_arm_joints=args.initial_joints,
         gripper_hold_open_duration=args.gripper_hold_open_duration,
+        seed=args.seed,
     )
     server.run(
         gripper_port=args.gripper_port,

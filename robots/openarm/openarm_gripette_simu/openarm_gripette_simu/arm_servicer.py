@@ -33,8 +33,12 @@ CUBE_X_NOISE = 0.06
 CUBE_Y_NOISE = 0.2
 CUBE_YAW_NOISE = np.pi
 ARM_JOINT_NOISE = 0.08
+# Legacy reset: cube draws before giving up (Reset then returns success=False).
+MAX_CUBE_PLACEMENT_TRIES = 200
 
-# Table bounds (from table_red_cube.xml)
+# Table bounds (from table_red_cube.xml). FALLBACK only: the legacy reset reads
+# the loaded scene's own `tabletop` / `red_cube` geoms (see _scene_cube_bounds),
+# because table_grasp.xml has a different, smaller table and a taller can.
 TABLE_X_MIN = 0.165
 TABLE_X_MAX = 0.735
 TABLE_Y_MIN = -0.285
@@ -82,12 +86,13 @@ CUBE_MOVED_THRESHOLD = 0.005
 class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
 
     def __init__(self, sim, kin: Kinematics, lock: threading.Lock, start_time: float,
-                 server=None):
+                 server=None, seed=None):
         self._sim = sim
         self._kin = kin
         self._lock = lock
         self._start_time = start_time
-        self._rng = np.random.default_rng()
+        # seed: int / SeedSequence for reproducible cube placement; None = fresh.
+        self._rng = np.random.default_rng(seed)
         # Optional back-reference to the SimulationServer. If set, the Reset
         # RPC can delegate to server.reset_episode_random() which samples a
         # cube position + arm home pose from the SAME training distribution
@@ -228,6 +233,26 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
             self._sim.model, mujoco.mjtObj.mjOBJ_JOINT, "red_cube_joint"
         ) >= 0
 
+    def _scene_cube_bounds(self):
+        """(x_min, x_max, y_min, y_max, rest_z) for the legacy cube sampler,
+        from the LOADED scene: the `tabletop` box extent and the cube resting
+        on it (top + half height). Falls back to the table_red_cube.xml
+        constants for scenes without those geoms."""
+        m = self._sim.model
+        top_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "tabletop")
+        cube_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "red_cube")
+        if top_id < 0 or cube_id < 0:
+            return TABLE_X_MIN, TABLE_X_MAX, TABLE_Y_MIN, TABLE_Y_MAX, CUBE_Z
+        d = mujoco.MjData(m)            # scratch data: static geometry only
+        mujoco.mj_kinematics(m, d)
+        c, s = d.geom_xpos[top_id], m.geom_size[top_id]
+        # Half height: size[1] for a cylinder, size[2] for a box.
+        half_h = (m.geom_size[cube_id][1] if m.geom_type[cube_id] == mujoco.mjtGeom.mjGEOM_CYLINDER
+                  else m.geom_size[cube_id][2])
+        return (float(c[0] - s[0]), float(c[0] + s[0]),
+                float(c[1] - s[1]), float(c[1] + s[1]),
+                float(c[2] + s[2] + half_h))
+
     def _randomize_cube(self):
         """Randomize cube position using MuJoCo collision detection to avoid robot contact."""
         cube_jnt_id = mujoco.mj_name2id(self._sim.model, mujoco.mjtObj.mjOBJ_JOINT, "red_cube_joint")
@@ -243,29 +268,36 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
             )
         cube_qadr = self._sim.model.jnt_qposadr[cube_jnt_id]
         cube_dof_adr = self._sim.model.jnt_dofadr[cube_jnt_id]
+        x_min, x_max, y_min, y_max, cube_z = self._scene_cube_bounds()
 
-        while True:
+        # Bounded: an arm pose covering the whole sampling region would
+        # otherwise spin here forever, holding the sim lock.
+        for _attempt in range(MAX_CUBE_PLACEMENT_TRIES):
             cube_x = np.clip(
                 CUBE_NOMINAL_X + self._rng.uniform(-CUBE_X_NOISE, CUBE_X_NOISE),
-                TABLE_X_MIN + 0.02, TABLE_X_MAX - 0.02,
+                x_min + 0.02, x_max - 0.02,
             )
             cube_y = np.clip(
                 CUBE_NOMINAL_Y + self._rng.uniform(-CUBE_Y_NOISE, CUBE_Y_NOISE),
-                TABLE_Y_MIN + 0.02, TABLE_Y_MAX - 0.02,
+                y_min + 0.02, y_max - 0.02,
             )
             yaw = self._rng.uniform(-CUBE_YAW_NOISE, CUBE_YAW_NOISE)
 
-            self._sim.data.qpos[cube_qadr:cube_qadr + 3] = [cube_x, cube_y, CUBE_Z]
+            self._sim.data.qpos[cube_qadr:cube_qadr + 3] = [cube_x, cube_y, cube_z]
             self._sim.data.qpos[cube_qadr + 3:cube_qadr + 7] = [np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)]
             self._sim.data.qvel[cube_dof_adr:cube_dof_adr + 6] = 0
             mujoco.mj_forward(self._sim.model, self._sim.data)
 
             if not self._cube_contacts_robot():
                 break
+        else:
+            raise RuntimeError(
+                f"no contact-free cube position found in {MAX_CUBE_PLACEMENT_TRIES} "
+                "draws — the arm pose covers the cube sampling region")
 
         self._cube_start_xy = np.array([cube_x, cube_y])
-        self._cube_start_z = CUBE_Z
-        return cube_x, cube_y, CUBE_Z
+        self._cube_start_z = cube_z
+        return cube_x, cube_y, cube_z
 
     def _get_state_from_sim(self):
         """Read actual arm state from the simulation."""
@@ -430,8 +462,6 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
             # local noise around START_JOINTS. Used when no server reference,
             # or when the caller pins joints explicitly.
             with self._lock:
-                cx, cy, cz = self._randomize_cube()
-
                 if len(request.joint_positions) == 7:
                     joints = np.array(request.joint_positions)
                 else:
@@ -439,7 +469,11 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
                         -ARM_JOINT_NOISE, ARM_JOINT_NOISE, size=7
                     )
 
+                # Arm FIRST: the cube's no-contact check must run against the
+                # pose the arm is about to hold, not the previous episode's
+                # (which teleported the arm into a cube validated elsewhere).
                 self._sim.reset_arm(joints)
+                cx, cy, cz = self._randomize_cube()
                 self._sim.data.qvel[:] = 0
                 mujoco.mj_forward(self._sim.model, self._sim.data)
                 self._sync_target_from_sim()
