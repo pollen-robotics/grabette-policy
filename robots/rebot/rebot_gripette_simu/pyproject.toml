@@ -1,0 +1,41 @@
+[project]
+name = "rebot-gripette-simu"
+version = "0.1.0"
+description = "MuJoCo simulation of the reBot B601-RS + Gripette, with the same gRPC services as the real arm"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    # server.py imports grpc directly; the generated stubs and their grpcio
+    # floor live in gripette-core.
+    "grpcio>=1.81",
+    "rebot-gripette-model",
+    # For rebot_gripette.spec - the ArmSpec, joint order and home-pose guard,
+    # which must agree between the sim and the real arm or a policy trained in
+    # one cannot drive the other. That module is pure data and the package's
+    # imports are lazy (PEP 562), so this does NOT drag in the CAN stack; the
+    # lerobot plugin stays behind its own python>=3.12 marker.
+    "rebot-gripette",
+    # [kinematics] pulls placo: this package uses Kinematics, not just the
+    # proto contract.
+    "gripette-core[kinematics]",
+    # The camera, the gripper service and the MuJoCo wrapper. Shared with the
+    # OpenArm, which is the point: one gripper, one calibration, one copy.
+    "gripette-sim",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.uv.sources]
+rebot-gripette-model = { workspace = true }
+rebot-gripette = { workspace = true }
+gripette-core = { workspace = true }
+gripette-sim = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rebot_gripette_simu"]
