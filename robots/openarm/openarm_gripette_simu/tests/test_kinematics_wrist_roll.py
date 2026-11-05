@@ -123,6 +123,29 @@ def test_ik_roll_stays_inside_driver_limit(kin, mj):
     assert abs(q[ROLL_IDX]) <= ROLL_IK_LIMIT + 1e-6, np.degrees(q[ROLL_IDX])
 
 
+@pytest.mark.parametrize("source", ["placo", "mujoco"])
+def test_wrist_roll_matches_real_arm(kin, mj, source):
+    """+r_wrist_roll must turn oak_l the way +joint_6 turns the REAL arm.
+
+    Checked on the real arm 2026-11-05 (.claude/roll_sign_check.py): the
+    Onshape export had the roll reversed; robot.urdf / robot.xml were hand-
+    edited (roll + mimic axes flipped). Convention: the real motors are the
+    reference and the model follows. At home, +roll then rotates oak_l about
+    its own -y axis. A re-export that drops the hand edit fails here."""
+    model, data = mj
+    home = np.array([0.0, 0.0, 0.0, 1.57, 0.0, 0.0, 0.0])
+    rolled = home.copy()
+    rolled[ROLL_IDX] = 0.1
+    if source == "placo":
+        T0, T1 = (kin.forward(q, frame=CONTROL_FRAME) for q in (home, rolled))
+    else:
+        T0, T1 = (_mujoco_site_pose(model, data, q, CONTROL_FRAME) for q in (home, rolled))
+    R = T0[:3, :3].T @ T1[:3, :3]                       # rotation in the oak_l frame
+    axis = np.array([R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]])
+    axis /= np.linalg.norm(axis)
+    assert axis[1] < -0.95, f"+roll rotates oak_l about {axis.round(2)} (expected ~[0, -1, 0])"
+
+
 def test_ik_keeps_mimic_coupled(kin):
     """After IK, the placo mimic joint equals -roll (what MuJoCo/the real arm do)."""
     T = kin.forward(np.array([0.2, 0.0, 0.1, 1.0, 0.1, 0.4, 0.2]), frame=CONTROL_FRAME)
