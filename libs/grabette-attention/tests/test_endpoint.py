@@ -49,19 +49,54 @@ def test_for_per_step_deltas_the_endpoint_is_the_composed_sum():
 
 
 def test_per_step_deltas_compose_the_ROTATIONS_not_just_the_translations():
-    # Two steps of 1 mm along x, with a 90 deg rotation about z between them.
+    # Two steps of 1 mm along x, with a -90 deg rotation about z between them.
     # Naively summing gives (2, 0, 0) mm; composing correctly turns the second
-    # step onto +y, giving (1, 1, 0) mm. This is the whole reason the
-    # representation needs stating.
-    quarter_turn = (0.0, 1.0, 0.0, -1.0, 0.0, 0.0)   # 6D for Rz(-90 deg)
+    # step onto -y (Rz(-90) maps +x to -y), giving (1, -1, 0) mm. This is the
+    # whole reason the representation needs stating. The SIGN of y is asserted:
+    # decoding the 6D as columns instead of rows yields Rz(+90) and +y.
+    quarter_turn = (0.0, 1.0, 0.0, -1.0, 0.0, 0.0)   # 6D (rows) for Rz(-90 deg)
     chunk = np.zeros((2, 11), np.float32)
     chunk[:, :3] = [[0.001, 0, 0], [0.001, 0, 0]]
     chunk[0, 3:9] = quarter_turn      # applied AFTER step 0
     chunk[1, 3:9] = IDENTITY_6D
     end = chunk_endpoint_m(chunk, representation=PER_STEP_DELTAS)
     assert end[0] == pytest.approx(0.001)
-    assert abs(end[1]) == pytest.approx(0.001)
+    assert end[1] == pytest.approx(-0.001)
     assert np.linalg.norm(end) == pytest.approx(0.001 * np.sqrt(2))
+
+
+def _rows_6d(matrix):
+    # The repo's 6D convention: the FIRST TWO ROWS of R, flattened
+    # (policies/DiffusionPolicy/rotation.py, rotation_matrix_to_rotation_6d_numpy).
+    return np.asarray(matrix)[:2, :].reshape(6)
+
+
+def _rotation(axis, degrees):
+    # Rodrigues' formula, so the test needs no scipy.
+    axis = np.asarray(axis, np.float64) / np.linalg.norm(axis)
+    k = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+    a = np.radians(degrees)
+    return np.eye(3) + np.sin(a) * k + (1 - np.cos(a)) * k @ k
+
+
+def test_the_endpoint_decodes_6d_in_the_repo_row_convention():
+    # Pinned against the repo encoder on generic (non-symmetric) rotations:
+    # the composed endpoint must equal p = d0 + R0 d1 + R0 R1 d2 + ... built
+    # from the TRUE matrices. A column decode composes R^T instead and misses
+    # by centimetres over a 50-step chunk at a few degrees per step.
+    rng = np.random.default_rng(0)
+    steps = np.tile([0.0, 0.0, 0.002], (50, 1))
+    mats = [_rotation(rng.normal(size=3), 2.0) for _ in range(50)]
+    chunk = np.zeros((50, 11))
+    chunk[:, :3] = steps
+    chunk[:, 3:9] = [_rows_6d(m) for m in mats]
+
+    expected, frame = np.zeros(3), np.eye(3)
+    for d, m in zip(steps, mats):
+        expected = expected + frame @ d
+        frame = frame @ m
+    end = chunk_endpoint_m(chunk, representation=PER_STEP_DELTAS)
+    assert end == pytest.approx(expected, abs=1e-9)
 
 
 def test_a_degenerate_rotation_row_falls_back_to_the_identity():

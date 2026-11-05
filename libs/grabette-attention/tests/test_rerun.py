@@ -51,6 +51,11 @@ class FakeRerun(types.ModuleType):
         return _Scalars(value)
 
 
+# Entity-path segment for episode 3 with no denoise_step in provenance
+# (which the front ends read as "last").
+RUN = "ep003/steplast"
+
+
 @pytest.fixture
 def fake_rerun(monkeypatch):
     module = FakeRerun()
@@ -58,9 +63,12 @@ def fake_rerun(monkeypatch):
     return module
 
 
-def analysis() -> FrameAnalysis:
+def analysis(episode=3, frame=42, step=None) -> FrameAnalysis:
+    provenance = {"checkpoint": "user/m"}
+    if step is not None:
+        provenance["denoise_step"] = str(step)
     return FrameAnalysis(
-        episode=3, frame=42,
+        episode=episode, frame=frame,
         cameras={
             # Non-constant, so a test can tell "upsampled and normalized" apart
             # from "upsampled and left at its raw, near-black scale".
@@ -76,7 +84,7 @@ def analysis() -> FrameAnalysis:
             )
         },
         baseline_mm=42.0,
-        provenance={"checkpoint": "user/m"},
+        provenance=provenance,
     )
 
 
@@ -96,7 +104,7 @@ def test_it_logs_the_frame_and_the_overlay_under_the_camera_entity(fake_rerun):
     logged_dict = {p: e for p, e in fake_rerun.logged}
 
     # Camera frame should be an Image entity with the observation's frame for cam0
-    frame_entity = logged_dict["camera_feed/cam0"]
+    frame_entity = logged_dict[f"camera_feed/{RUN}/cam0"]
     assert isinstance(frame_entity, _Image)
     assert np.array_equal(frame_entity.array, obs.images["observation.images.cam0"])
 
@@ -105,7 +113,7 @@ def test_it_logs_the_frame_and_the_overlay_under_the_camera_entity(fake_rerun):
     # 12x16 grid does not stretch over its 720x960 parent (Finding 5). Asserting
     # only "equals the grid", as this test used to, cannot catch that.
     grid = analysis().cameras["observation.images.cam0"].grid
-    overlay_entity = logged_dict["camera_feed/cam0/attention"]
+    overlay_entity = logged_dict[f"camera_feed/{RUN}/cam0/attention"]
     assert isinstance(overlay_entity, _Image)
     assert overlay_entity.array.shape[:2] == obs.images["observation.images.cam0"].shape[:2]
     assert overlay_entity.array.shape != grid.shape
@@ -125,19 +133,48 @@ def test_it_logs_mass_and_ablation_as_scalar_series(fake_rerun):
     logged_dict = {p: e for p, e in fake_rerun.logged}
 
     # Mass should be a Scalars entity with the camera's mass value
-    mass_entity = logged_dict["metrics/mass/cam0"]
+    mass_entity = logged_dict[f"metrics/mass/{RUN}/cam0"]
     assert isinstance(mass_entity, _Scalars)
     assert mass_entity.value == ana.cameras["observation.images.cam0"].mass
 
     # Ablation should be a Scalars entity with the delta_mm value
-    ablation_entity = logged_dict["metrics/ablation_mm/cam0"]
+    ablation_entity = logged_dict[f"metrics/ablation_mm/{RUN}/cam0"]
     assert isinstance(ablation_entity, _Scalars)
     assert ablation_entity.value == ana.ablations["observation.images.cam0"].delta_mm
 
     # Language mass should be a Scalars entity with the language mass value
-    lang_entity = logged_dict["metrics/mass/language"]
+    lang_entity = logged_dict[f"metrics/mass/{RUN}/language"]
     assert isinstance(lang_entity, _Scalars)
     assert lang_entity.value == ana.language_mass
+
+
+def _paths(fake_rerun):
+    return [p for p, _ in fake_rerun.logged]
+
+
+def test_distinct_denoise_steps_of_one_frame_get_distinct_entities(fake_rerun):
+    # --denoise-step all logs one record per step for the SAME frame. On a
+    # frame-only timeline with shared paths, each step overwrites the last and
+    # only step 9 would be visible.
+    from grabette_attention.frontends import rerun_logger
+
+    rerun_logger.log_analysis(analysis(frame=3, step=0), observation())
+    first = set(_paths(fake_rerun))
+    fake_rerun.logged.clear()
+    rerun_logger.log_analysis(analysis(frame=3, step=9), observation())
+    second = set(_paths(fake_rerun))
+    assert first.isdisjoint(second)
+
+
+def test_episodes_sharing_a_frame_index_get_distinct_entities(fake_rerun):
+    from grabette_attention.frontends import rerun_logger
+
+    rerun_logger.log_analysis(analysis(episode=0, frame=3), observation())
+    first = set(_paths(fake_rerun))
+    fake_rerun.logged.clear()
+    rerun_logger.log_analysis(analysis(episode=1, frame=3), observation())
+    second = set(_paths(fake_rerun))
+    assert first.isdisjoint(second)
 
 
 def test_the_frame_index_drives_the_timeline(fake_rerun):
@@ -183,6 +220,6 @@ def test_two_cameras_sharing_a_trailing_segment_both_get_distinct_entities(fake_
     logged_paths = {p for p, _ in fake_rerun.logged}
 
     assert left != right
-    assert f"camera_feed/{left}" in logged_paths
-    assert f"camera_feed/{right}" in logged_paths
-    assert "camera_feed/cam0" not in logged_paths
+    assert f"camera_feed/{RUN}/{left}" in logged_paths
+    assert f"camera_feed/{RUN}/{right}" in logged_paths
+    assert f"camera_feed/{RUN}/cam0" not in logged_paths
