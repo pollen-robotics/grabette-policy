@@ -283,8 +283,31 @@ def test_grip_gain_one_is_still_the_identity(ev):
 
 # ── main() with a fake loaded policy (no checkpoint, no server) ────────────
 
-class _ReachedConnect(Exception):
-    """main() got past model loading to the gRPC connection."""
+class _ReachedCamera(Exception):
+    """main() got past connecting and action-space resolution to the camera."""
+
+
+class _FakeArmStub:
+    """Answers Ping and GetArmState (7 joints); any motion RPC is a failure."""
+    def __init__(self, _channel):
+        pass
+
+    def Ping(self, _req):
+        return None
+
+    def GetArmState(self, _req):
+        return SimpleNamespace(joint_positions=[0.0] * 7)
+
+    def __getattr__(self, name):
+        raise AssertionError(f"main() called {name} before refusing the checkpoint")
+
+
+class _FakeGripperStub:
+    def __init__(self, _channel):
+        pass
+
+    def Ping(self, _req):
+        return None
 
 
 class _FakeLoadedPolicy:
@@ -302,14 +325,23 @@ class _FakeLoadedPolicy:
 
 
 def run_main_loaded(ev, monkeypatch, argv, state_dim=2, action_dim=11):
-    """main() with a fake policy; stops at the first gRPC channel."""
-    def _no_channel(_addr):
-        raise _ReachedConnect
+    """main() with a fake policy and fake servers; stops at the camera stream.
+
+    The action space is resolved after connecting (it needs the server's joint
+    count), so the fake arm answers Ping/GetArmState and fails on anything else:
+    a refusal must come before any Reset or motion."""
+    from openarm_gripette_simu.proto import arm_pb2_grpc, gripper_pb2_grpc
+
+    def _no_camera(*_a, **_k):
+        raise _ReachedCamera
     monkeypatch.setattr(ev, "_load_policy_any",
                         lambda _c: _FakeLoadedPolicy(state_dim, action_dim))
     monkeypatch.setattr(ev, "make_pre_post_processors",
                         lambda *a, **k: (lambda b: b, SimpleNamespace(steps=[])))
-    monkeypatch.setattr(ev.grpc, "insecure_channel", _no_channel)
+    monkeypatch.setattr(ev.grpc, "insecure_channel", lambda _addr: None)
+    monkeypatch.setattr(arm_pb2_grpc, "ArmServiceStub", _FakeArmStub)
+    monkeypatch.setattr(gripper_pb2_grpc, "GripperServiceStub", _FakeGripperStub)
+    monkeypatch.setattr(ev, "CameraStream", _no_camera)
     monkeypatch.setattr("sys.argv", ["evaluate.py", "--device", "cpu", "--checkpoint",
                                      "/nonexistent", "--grasp_projection", "off",
                                      "--chunk_relative", "off", *argv])
@@ -318,13 +350,13 @@ def run_main_loaded(ev, monkeypatch, argv, state_dim=2, action_dim=11):
 
 # ── SIM-8: --joint_mode needs an RPC no arm.proto defines ──────────────────
 
-def test_joint_space_checkpoint_is_refused_before_connecting(ev, monkeypatch):
+def test_joint_space_checkpoint_is_refused_before_any_motion(ev, monkeypatch):
     with pytest.raises(SystemExit, match="SendJointCommand"):
         run_main_loaded(ev, monkeypatch, [], state_dim=9, action_dim=9)
 
 
-def test_cartesian_checkpoint_still_connects(ev, monkeypatch):
-    with pytest.raises(_ReachedConnect):
+def test_cartesian_checkpoint_gets_past_the_refusal(ev, monkeypatch):
+    with pytest.raises(_ReachedCamera):
         run_main_loaded(ev, monkeypatch, [])
 
 

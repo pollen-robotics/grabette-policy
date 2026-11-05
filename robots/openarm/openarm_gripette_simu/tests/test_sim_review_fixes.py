@@ -161,7 +161,11 @@ def test_key_reset_refreshes_the_servicer_episode_state(server, key):
 
 # ── SIM-8: generated stubs stay in sync with the .proto files ──────────────
 
-_PKG = Path(__file__).resolve().parents[1]
+# The protos, stubs and generate_proto.py live in libs/gripette-core (shared
+# by both arms since the reBot integration).
+import gripette_core  # noqa: E402
+
+_PKG = Path(gripette_core.__file__).resolve().parents[1]
 
 
 def _parse_proto(text):
@@ -184,7 +188,7 @@ def _parse_proto(text):
 def test_pb2_matches_its_proto(name):
     import importlib
 
-    pb2 = importlib.import_module(f"openarm_gripette_simu.proto.{name}_pb2")
+    pb2 = importlib.import_module(f"gripette_core.proto.{name}_pb2")
     messages, rpcs = _parse_proto((_PKG / "proto" / f"{name}.proto").read_text())
     fd = pb2.DESCRIPTOR
     got = {m.name: {f.name: f.number for f in m.fields} for m in fd.message_types_by_name.values()}
@@ -198,10 +202,10 @@ def test_generate_proto_regenerates_every_proto(tmp_path, monkeypatch):
     import shutil
     import subprocess
 
-    out = tmp_path / "openarm_gripette_simu" / "proto"
+    out = tmp_path / "gripette_core" / "proto"
     out.mkdir(parents=True)
     shutil.copytree(_PKG / "proto", tmp_path / "proto")
-    for f in (_PKG / "openarm_gripette_simu" / "proto").glob("*_pb2_grpc.py"):
+    for f in (_PKG / "gripette_core" / "proto").glob("*_pb2_grpc.py"):
         shutil.copy(f, out / f.name)
     calls = []
     monkeypatch.setattr(subprocess, "check_call", lambda cmd: calls.append(cmd))
