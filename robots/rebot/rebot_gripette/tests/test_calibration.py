@@ -1,0 +1,167 @@
+"""Calibration ranges: motor space, and INT - never float.
+
+MotorCalibration.range_min/range_max are typed `int` and draccus refuses to
+decode a float into one. A float in the file makes it unloadable, which makes
+is_calibrated False, which makes connect() re-zero the arm. That chain is the
+reason these tests exist.
+
+The ranges are the motor limits unchanged, because ReBotFollowerConfig pins
+joint_directions to the identity: the file records the space observations and
+actions are actually in, and for this package that is motor space.
+"""
+import json
+
+import pytest
+
+pytest.importorskip("lerobot_robot_seeed_b601")
+
+from lerobot.motors import MotorCalibration
+
+from rebot_gripette import (
+    CalibratedRangesMixin,
+    ReBotFollowerConfig,
+    fix_calibration_file,
+    calibration_ranges,
+)
+
+# config.joint_limits verbatim, widened outward to int. These are the vendor
+# mapping's two worked examples (elbow_flex, gripper) in the space this package
+# actually uses: with direction -1.0 and 6.0 they would read -200..0 and 0..45.
+EXPECTED_RANGES = {
+    "shoulder_pan": (-145, 145),
+    "shoulder_lift": (0, 170),
+    "elbow_flex": (0, 200),
+    "wrist_flex": (-80, 90),
+    "wrist_yaw": (-90, 90),
+    "wrist_roll": (-130, 130),
+    "gripper": (0, 270),
+}
+
+
+@pytest.fixture
+def config(tmp_path):
+    return ReBotFollowerConfig(id="pytest", port="can0", calibration_dir=tmp_path)
+
+
+def test_ranges_are_the_motor_limits(config):
+    assert calibration_ranges(config) == EXPECTED_RANGES
+
+
+def test_range_values_are_int_not_float(config):
+    """draccus rejects a float here - see the module docstring."""
+    for joint, (lo, hi) in calibration_ranges(config).items():
+        assert type(lo) is int, f"{joint} range_min is {type(lo).__name__}"
+        assert type(hi) is int, f"{joint} range_max is {type(hi).__name__}"
+
+
+def test_ranges_are_widened_never_narrowed(config):
+    """floor/ceil, so a reachable position can never fall outside the range."""
+    for joint, (lo, hi) in calibration_ranges(config).items():
+        motor_lo, motor_hi = config.joint_limits[joint]
+        direction = config.joint_directions[joint]
+        a, b = motor_lo / direction, motor_hi / direction
+        assert lo <= min(a, b)
+        assert hi >= max(a, b)
+
+
+def test_a_zero_direction_raises(config):
+    config.joint_directions["wrist_roll"] = 0.0
+    with pytest.raises(ValueError, match="joint_directions"):
+        calibration_ranges(config)
+
+
+def test_fix_calibration_file_rewrites_ranges_and_keeps_the_zero(tmp_path, config):
+    """Correcting ranges must not disturb homing_offset - the zero lives on the
+    motors, not in this file."""
+    path = tmp_path / "rebot1.json"
+    original = {
+        joint: {"id": i + 1, "drive_mode": 0, "homing_offset": 0,
+                "range_min": -90, "range_max": 90}
+        for i, joint in enumerate(EXPECTED_RANGES)
+    }
+    path.write_text(json.dumps(original, indent=4))
+
+    fix_calibration_file(path, config=config, backup=False)
+    written = json.loads(path.read_text())
+
+    for joint, (lo, hi) in EXPECTED_RANGES.items():
+        assert written[joint]["range_min"] == lo
+        assert written[joint]["range_max"] == hi
+        assert written[joint]["homing_offset"] == 0
+        assert written[joint]["drive_mode"] == 0
+
+
+def test_the_urdf_warning_is_quiet_for_the_shipped_config(tmp_path, config, capsys):
+    """Our config's joint_limits ARE the model's, so nothing should warn. The
+    URDF stores radians, so its degrees come back as -79.99999... - without a
+    tolerance every joint would warn about two ten-thousandths of a degree and
+    the warning would be noise nobody reads."""
+    path = tmp_path / "rebot1.json"
+    path.write_text(json.dumps(
+        {joint: {"id": i + 1, "drive_mode": 0, "homing_offset": 0,
+                 "range_min": -90, "range_max": 90}
+         for i, joint in enumerate(EXPECTED_RANGES)}, indent=4))
+
+    fix_calibration_file(path, config=config, backup=False)
+    assert "WARNING" not in capsys.readouterr().out
+
+
+def test_the_urdf_warning_still_fires_for_real_overtravel(tmp_path, config, capsys):
+    """The tolerance must not silence the thing the warning is for: a config
+    that permits travel the dynamics model does not cover."""
+    path = tmp_path / "rebot1.json"
+    path.write_text(json.dumps(
+        {joint: {"id": i + 1, "drive_mode": 0, "homing_offset": 0,
+                 "range_min": -90, "range_max": 90}
+         for i, joint in enumerate(EXPECTED_RANGES)}, indent=4))
+
+    lo, hi = config.joint_limits["wrist_roll"]
+    config.joint_limits["wrist_roll"] = (lo, hi + 30.0)
+    fix_calibration_file(path, config=config, backup=False)
+
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "wrist_roll" in out
+
+
+def test_fix_calibration_file_backs_up_once(tmp_path, config):
+    path = tmp_path / "rebot1.json"
+    path.write_text(json.dumps({"elbow_flex": {"range_min": -90, "range_max": 90}}))
+    fix_calibration_file(path, config=config)
+    backup = path.with_suffix(".json.orig")
+    assert json.loads(backup.read_text())["elbow_flex"]["range_min"] == -90
+
+
+def test_mixin_corrects_ranges_after_the_base_procedure(config):
+    """CalibratedRangesMixin runs the base calibrate() unchanged, then fixes the
+    +/-90 placeholders the base wrote, then saves."""
+
+    class _BaseStub:
+        """Stands in for the plugin's calibrate(): writes +/-90 everywhere."""
+
+        def __init__(self, cfg):
+            self.config = cfg
+            self.calibration = {}
+            self.saved = 0
+
+        def calibrate(self):
+            self.calibration = {
+                joint: MotorCalibration(id=i + 1, drive_mode=0, homing_offset=0,
+                                        range_min=-90, range_max=90)
+                for i, joint in enumerate(EXPECTED_RANGES)
+            }
+
+        def _save_calibration(self):
+            self.saved += 1
+
+    class _Calibrated(CalibratedRangesMixin, _BaseStub):
+        pass
+
+    robot = _Calibrated(config)
+    robot.calibrate()
+
+    assert robot.saved == 1
+    for joint, (lo, hi) in EXPECTED_RANGES.items():
+        entry = robot.calibration[joint]
+        assert (entry.range_min, entry.range_max) == (lo, hi)
+        assert type(entry.range_min) is int
+        assert entry.homing_offset == 0
