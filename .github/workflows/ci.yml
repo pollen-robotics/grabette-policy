@@ -41,8 +41,9 @@ jobs:
         run: uv sync --all-packages
 
       - name: Import smoke test
-        # The OpenArm sim is validated by the build step above; importing it
-        # at runtime additionally needs system urdfdom (placo).
+        # The OpenArm packages are exercised by the test step below (placo
+        # loads from the cmeel-urdfdom/tinyxml2 wheels pinned in the root
+        # pyproject.toml; no system urdfdom needed).
         run: |
           uv run python - <<'PY'
           import importlib, sys
@@ -62,6 +63,16 @@ jobs:
                   failed.append(m)
           sys.exit(1 if failed else 0)
           PY
+
+      - name: OpenArm tests (sim + real driver, no hardware)
+        # Runs in this job because it already has the full workspace env
+        # (MuJoCo, placo, lerobot, torch) and the LFS meshes. Test dirs are
+        # named explicitly: examples/ holds bench scripts named test_*.py that
+        # talk to live servers and must not be collected.
+        run: |
+          uv run --no-sync --with pytest python -m pytest -q \
+            robots/openarm/openarm_gripette_simu/tests \
+            robots/openarm/openarm_gripette/tests
 
   proto-sync:
     # The sim's gripper.proto must stay field-for-field identical to gripette's:
@@ -166,3 +177,12 @@ jobs:
         run: |
           PYTHONPATH=libs/grabette-chunkrel .venv-lerobot/bin/python -m pytest \
             libs/grabette-chunkrel/tests -q
+
+      - name: Policy script tests (DiffusionPolicy, Pi05)
+        # The policy projects are standalone (own uv.lock, Pi05 pins a lerobot
+        # git revision), but their tests touch only the pure helpers, which
+        # import lerobot at module scope. Run here against the workspace
+        # lerobot rather than building two more multi-GB torch envs.
+        run: |
+          PYTHONPATH=libs/grabette-chunkrel .venv-lerobot/bin/python -m pytest -q \
+            policies/DiffusionPolicy/tests policies/Pi05/tests
