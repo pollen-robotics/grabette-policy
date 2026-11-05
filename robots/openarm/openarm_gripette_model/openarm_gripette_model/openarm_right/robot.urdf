@@ -495,8 +495,11 @@
     <origin xyz="0.0172 -0 0.0455" rpy="1.5708 0.00215838 -1.5708"/>
     <parent link="j6_a_3_step"/>
     <child link="j7_e_2_step"/>
-    <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-0.78324" upper="0.787556"/>
+    <!-- HAND EDIT (2026-11-05), not from Onshape: axis flipped (+ limits negated/swapped),
+         same for r_wrist_roll_mimic, so +joint_6 turns the model like the REAL arm. Redo
+         in Onshape before the next export. Guarded by test_wrist_roll_matches_real_arm. -->
+    <axis xyz="0 0 -1"/>
+    <limit effort="10" velocity="10" lower="-0.787556" upper="0.78324"/>
   </joint>
   <!-- Link dm_j4310_1_2_step_2 -->
   <link name="dm_j4310_1_2_step_2">
@@ -2072,7 +2075,8 @@
     <origin xyz="0.0343 -0 0.1205" rpy="1.5708 -0.00215838 1.5708"/>
     <parent link="j6_a_3_step"/>
     <child link="dm_j4310_1_2_step_2"/>
-    <axis xyz="0 0 1"/>
+    <!-- HAND EDIT (2026-11-05): flipped with r_wrist_roll, see there. -->
+    <axis xyz="0 0 -1"/>
     <limit effort="10" velocity="10" lower="-3.141592653589793" upper="3.141592653589793"/>
     <mimic joint="r_wrist_roll" multiplier="-1.0"/>
   </joint>
