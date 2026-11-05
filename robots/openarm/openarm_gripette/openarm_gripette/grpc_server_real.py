@@ -305,13 +305,11 @@ def main():
             f"Scaled MIT position_kd by {args.kd_scale}: {[round(v, 2) for v in robot_config.position_kd]}"
         )
     robot = OpenArm7Follower(robot_config)
-    # calibrate=False: the server never modifies calibration. If the firmware
-    # zeros or the calibration file need updating, run `lerobot-calibrate`
-    # explicitly before starting the server.
-    robot.connect(calibrate=False)
-    logger.info("Robot connected (7-DOF arm, gripper is external)")
 
-    arm_iface = ArmInterface(robot, arm_joint_map)
+    # Startup ORDER matters: everything that can fail without the motors
+    # (kinematics load, port bind) runs BEFORE robot.connect(), because
+    # connect() -> configure() toggles torque on all 7 motors. Once connected,
+    # every exit path goes through the torque-off + disconnect `finally`.
 
     # ---- Kinematics (same URDF as simulator, but with stricter orientation
     #      weight on real to keep the wrist locked through optical-axis
@@ -334,21 +332,12 @@ def main():
     # (observed on the real robot 2026-07-28: two servers on :50052, 17:02-17:04).
     # Disabling so_reuseport makes the second bind FAIL, and we check the return
     # value (add_insecure_port returns 0 on failure) instead of ignoring it.
+    # The bind happens BEFORE robot.connect(): a second instance must refuse
+    # without touching the motors (connect toggles torque on the first
+    # instance's arm). The servicer is registered later, before start().
     start_time = time.monotonic()
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=4),
                          options=[("grpc.so_reuseport", 0)])
-    servicer = ArmServicer(
-        arm_iface,
-        kin,
-        HOME_JOINTS_RAD,
-        start_time,
-        interp_hz=args.interp_hz,
-        interp_alpha=args.interp_alpha,
-        max_ik_jump_deg=args.max_ik_jump_deg,
-        max_ik_jump_violations=args.max_ik_jump_violations,
-        max_target_lead_mm=args.max_target_lead_mm,
-    )
-    arm_pb2_grpc.add_ArmServiceServicer_to_server(servicer, server)
     # grpcio signals a failed bind either by returning 0 (older) or by raising
     # RuntimeError (current) — handle both so the refusal is always explained.
     try:
@@ -365,17 +354,42 @@ def main():
             f"pgrep -af grpc_server_real\n"
             f"Stop the existing one before starting this."
         )
-    server.start()
-    logger.info(f"ArmService listening on port {args.arm_port}")
-    logger.info("Press Ctrl+C to stop")
 
+    # calibrate=False: the server never modifies calibration. If the firmware
+    # zeros or the calibration file need updating, run `lerobot-calibrate`
+    # explicitly before starting the server.
+    robot.connect(calibrate=False)
+    logger.info("Robot connected (7-DOF arm, gripper is external)")
+
+    arm_iface = ArmInterface(robot, arm_joint_map)
+    servicer = None
+    # Everything after connect() is inside this try, so a failure in servicer
+    # init or server start still disables torque and disconnects the bus.
     try:
-        server.wait_for_termination()
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
+        servicer = ArmServicer(
+            arm_iface,
+            kin,
+            HOME_JOINTS_RAD,
+            start_time,
+            interp_hz=args.interp_hz,
+            interp_alpha=args.interp_alpha,
+            max_ik_jump_deg=args.max_ik_jump_deg,
+            max_ik_jump_violations=args.max_ik_jump_violations,
+            max_target_lead_mm=args.max_target_lead_mm,
+        )
+        arm_pb2_grpc.add_ArmServiceServicer_to_server(servicer, server)
+        server.start()
+        logger.info(f"ArmService listening on port {args.arm_port}")
+        logger.info("Press Ctrl+C to stop")
+
+        try:
+            server.wait_for_termination()
+        except KeyboardInterrupt:
+            logger.info("Shutting down...")
     finally:
         server.stop(grace=2.0)
-        servicer.stop()
+        if servicer is not None:
+            servicer.stop()
         # Belt and braces: explicit double-pass torque disable BEFORE
         # disconnect. robot.disconnect() also disables, but with single
         # fire-and-forget frames per motor — one lost frame leaves that motor
