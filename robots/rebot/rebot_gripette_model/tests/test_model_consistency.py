@@ -168,11 +168,12 @@ def test_the_base_is_bolted_down():
 def test_the_actuators_are_stiff_enough_to_track():
     """The export ships kp=50, which does not merely make the arm soft.
 
-    `arm_service` rejects any command whose Cartesian target runs more than
+    `arm_service` rejected any command whose Cartesian target ran more than
     50 mm ahead of the measured pose, reading that as contact. At kp=50 the
     simulated arm settles 55 mm from the pose it is told to HOLD, so the guard
-    fires on gravity alone, before a policy has asked for anything, and
-    episodes die at random steps. At kp=500 the same pose settles 5 mm out.
+    fired on gravity alone, before a policy had asked for anything, and
+    episodes died at random steps. At kp=500 the same pose settles 5 mm out.
+    (The cap is now 80 mm; 55 mm of sag would still leave it almost no margin.)
 
     This is a tracking requirement, not a fidelity one: the real arm droops
     ~2.5 deg and kp=150 would reproduce that faithfully, but a simulator whose

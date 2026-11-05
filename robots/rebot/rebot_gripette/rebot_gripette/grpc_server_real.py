@@ -66,7 +66,7 @@ from concurrent import futures
 
 import grpc
 import numpy as np
-from gripette_core.arm_service import ArmServicer
+from gripette_core.arm_service import DEFAULT_MAX_TARGET_LEAD_MM, ArmServicer
 from gripette_core.kinematics import Kinematics
 from gripette_core.proto import arm_pb2_grpc
 
@@ -102,7 +102,9 @@ def parse_args():
     p.add_argument("--interp_alpha", type=float, default=0.3)
     p.add_argument("--max_ik_jump_deg", type=float, default=15.0)
     p.add_argument("--max_ik_jump_violations", type=int, default=2)
-    p.add_argument("--max_target_lead_mm", type=float, default=50.0)
+    p.add_argument("--max_target_lead_mm", type=float, default=DEFAULT_MAX_TARGET_LEAD_MM,
+                   help="contact guard cap. Default: the OpenArm's hardware-tuned "
+                        "value, not yet tuned on this arm.")
     p.add_argument("--clearance_margin_mm", type=float, default=20.0,
                    help="keep the guarded links this far from the bench. 0 "
                         "disables the gate - see --no_clearance.")

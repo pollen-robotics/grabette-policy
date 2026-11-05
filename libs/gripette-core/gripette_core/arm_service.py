@@ -44,6 +44,12 @@ logger = logging.getLogger(__name__)
 RESET_DURATION_S = 3.0
 RESET_HZ = 50
 
+# Contact guard cap (mm), shared by every arm. 80 is the only value tuned on
+# hardware (OpenArm, see its README "The contact guard"): above normal
+# full-speed tracking lag; 40 gave false contact while lifting. The servers'
+# --max_target_lead_mm defaults point here so the arms cannot drift apart.
+DEFAULT_MAX_TARGET_LEAD_MM = 80.0
+
 
 class ArmInterface(Protocol):
     """What the servicer needs from a physical (or simulated) arm.
@@ -98,7 +104,7 @@ class ArmServicer(arm_pb2_grpc.ArmServiceServicer):
         interp_alpha: float = 0.3,
         max_ik_jump_deg: float = 15.0,
         max_ik_jump_violations: int = 2,
-        max_target_lead_mm: float = 50.0,
+        max_target_lead_mm: float = DEFAULT_MAX_TARGET_LEAD_MM,
         joint_gate=None,
         object_tracker=None,
     ):

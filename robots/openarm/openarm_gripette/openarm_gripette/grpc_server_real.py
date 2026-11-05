@@ -43,7 +43,7 @@ import numpy as np
 # arm, so sim and real and OpenArm and reBot cannot drift apart behaviourally.
 # This module supplies only the OpenArm-specific half: the ArmInterface over
 # LeRobot/Damiao, the home pose, and the CLI.
-from gripette_core.arm_service import ArmServicer
+from gripette_core.arm_service import DEFAULT_MAX_TARGET_LEAD_MM, ArmServicer
 
 # Kinematics + proto stubs from the simulator package (ensures bit-for-bit match)
 from openarm_gripette_simu import Kinematics
@@ -247,7 +247,7 @@ def parse_args():
     p.add_argument(
         "--max_target_lead_mm",
         type=float,
-        default=80.0,
+        default=DEFAULT_MAX_TARGET_LEAD_MM,
         help="Contact guard (TRIP-ONLY): reject any delta that would put the "
         "integrator TARGET more than this far (mm) ahead of the MEASURED pose "
         "AND increase the lead. Bounds press force under contact without ever "

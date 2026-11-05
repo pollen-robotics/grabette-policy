@@ -67,6 +67,20 @@ def test_init_failure_after_connect_disables_and_disconnects(mocked_main, monkey
     follower.controlled_descent.assert_not_called()
 
 
+# RA-14: the reBot CLI hard-coded its own 50 mm lead cap, never tuned on
+# hardware. It now defaults to the shared, OpenArm-tuned value and forwards it.
+def test_lead_cap_defaults_to_the_shared_value(mocked_main):
+    import inspect
+
+    from gripette_core.arm_service import DEFAULT_MAX_TARGET_LEAD_MM, ArmServicer
+
+    assert srv.parse_args().max_target_lead_mm == DEFAULT_MAX_TARGET_LEAD_MM == 80.0
+    servicer_default = inspect.signature(ArmServicer).parameters["max_target_lead_mm"].default
+    assert servicer_default == DEFAULT_MAX_TARGET_LEAD_MM
+    srv.main()
+    assert srv.ArmServicer.call_args.kwargs["max_target_lead_mm"] == DEFAULT_MAX_TARGET_LEAD_MM
+
+
 def test_normal_startup_connects_after_bind_and_serves(mocked_main):
     follower, _, server = mocked_main
     srv.main()  # wait_for_termination is a mock: returns at once
