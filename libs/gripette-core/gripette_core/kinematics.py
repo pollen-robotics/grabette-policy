@@ -50,12 +50,23 @@ class ArmSpec:
             vector `forward()` takes and `inverse()` returns, so its ORDER is
             part of the wire contract with the servicers.
         masked_dofs: DOFs present in the URDF that the IK must not drive —
-            gripper fingers, mimic joints. Masking is what keeps the solver
-            from "solving" a reach by closing the fingers.
+            gripper fingers. Masking is what keeps the solver from "solving"
+            a reach by closing the fingers. Do NOT mask a mimic joint that
+            carries the end-effector chain: list it in `mimic_joints`.
+        mimic_joints: (mimic, source, ratio) triples, mimic = ratio * source
+            (URDF <mimic>, which placo does not apply by itself). FK sets the
+            mimic from the source; IK moves both as one DoF via a hard gear
+            task. Without this, a mimic that carries the end effector makes
+            FK blind to the source joint and IK never uses it (OpenArm wrist
+            roll, SIM-1).
+        joint_limits: (joint, lo, hi) IK limit overrides in rad, tighter than
+            the URDF, e.g. when the real driver clips a joint harder.
     """
     model_dir: str
     joint_names: tuple[str, ...]
     masked_dofs: tuple[str, ...] = field(default=())
+    mimic_joints: tuple[tuple[str, str, float], ...] = field(default=())
+    joint_limits: tuple[tuple[str, float, float], ...] = field(default=())
 
 
 class Kinematics:
@@ -79,6 +90,10 @@ class Kinematics:
         model_dir = str(model_dir) if model_dir else str(spec.model_dir)
         self.robot = placo.RobotWrapper(model_dir)
 
+        # Hard IK limit overrides (enforced by enable_joint_limits below).
+        for name, lo, hi in spec.joint_limits:
+            self.robot.set_joint_limits(name, lo, hi)
+
         # Set up the IK solver
         self.solver = self.robot.make_solver()
         self.solver.mask_fbase(True)  # base is fixed
@@ -88,6 +103,14 @@ class Kinematics:
         # Mask non-arm joints so IK only moves the arm DOFs
         for dof in spec.masked_dofs:
             self.solver.mask_dof(dof)
+
+        # Mimic couplings: hard gear task dq_mimic = ratio * dq_source, so the
+        # solver moves each pair as one DoF (positions are synced in
+        # _set_arm_joints whenever the joints are written).
+        for mimic, source, ratio in spec.mimic_joints:
+            gear = self.solver.add_gear_task()
+            gear.set_gear(mimic, source, ratio)
+            gear.configure(f"mimic_{mimic}", "hard", 1.0)
 
         # Small regularization keeps the QP full-rank (min-velocity solution).
         self.solver.add_regularization_task(1e-4)
@@ -122,8 +145,7 @@ class Kinematics:
         Returns:
             4x4 homogeneous transform (world -> frame).
         """
-        for i, name in enumerate(self.joint_names):
-            self.robot.set_joint(name, joint_positions[i])
+        self._set_arm_joints(joint_positions)
         self.robot.update_kinematics()
         return self.robot.get_T_world_frame(frame).copy()
 
@@ -149,8 +171,7 @@ class Kinematics:
             array of arm joint angles (rad), one per `spec.joint_names`.
         """
         if current_joint_positions is not None:
-            for i, name in enumerate(self.joint_names):
-                self.robot.set_joint(name, current_joint_positions[i])
+            self._set_arm_joints(current_joint_positions)
             self.robot.update_kinematics()
 
         # Convert a target given in another frame to the camera target the
@@ -169,6 +190,13 @@ class Kinematics:
             self.robot.update_kinematics()
 
         return self.get_arm_joints()
+
+    def _set_arm_joints(self, joint_positions) -> None:
+        """Write the arm joints (spec order) and the coupled mimic joints."""
+        for i, name in enumerate(self.joint_names):
+            self.robot.set_joint(name, joint_positions[i])
+        for mimic, source, ratio in self.spec.mimic_joints:
+            self.robot.set_joint(mimic, ratio * self.robot.get_joint(source))
 
     def get_arm_joints(self) -> np.ndarray:
         """Read the current arm joint positions from the Placo model."""
