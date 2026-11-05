@@ -64,15 +64,21 @@ jobs:
           sys.exit(1 if failed else 0)
           PY
 
-      - name: OpenArm tests (sim + real driver, no hardware)
+      - name: Arm tests (shared servicer, OpenArm sim + real driver, reBot driver; no hardware)
         # Runs in this job because it already has the full workspace env
-        # (MuJoCo, placo, lerobot, torch) and the LFS meshes. Test dirs are
-        # named explicitly: examples/ holds bench scripts named test_*.py that
-        # talk to live servers and must not be collected.
+        # (MuJoCo, placo, lerobot, torch, the reBot plugin) and the LFS meshes.
+        # libs/gripette-core/tests is here too because its servicer safety
+        # tests need placo: the placo-free "Shared-core unit tests" lane skips
+        # them. The reBot driver dir also runs (py3.11, no plugin) in the tests
+        # job; here its plugin-dependent tests run instead of skipping. Test
+        # dirs are named explicitly: examples/ holds bench scripts named
+        # test_*.py that talk to live servers and must not be collected.
         run: |
           uv run --no-sync --with pytest python -m pytest -q \
+            libs/gripette-core/tests \
             robots/openarm/openarm_gripette_simu/tests \
-            robots/openarm/openarm_gripette/tests
+            robots/openarm/openarm_gripette/tests \
+            robots/rebot/rebot_gripette/tests
 
   proto-sync:
     # The sim's gripper.proto must stay field-for-field identical to gripette's:

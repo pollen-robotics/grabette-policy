@@ -52,15 +52,17 @@ def test_init_failure_after_connect_disables_and_disconnects(mocked_main, monkey
 
 
 # RA-14: ArmServicer's max_target_lead_mm default (50) drifted from the CLI /
-# README default (80) that the real arm actually runs with.
-def test_servicer_defaults_match_cli(monkeypatch):
-    import inspect
-
-    monkeypatch.setattr(sys, "argv", ["grpc_server_real"])
-    args = srv.parse_args()
-    params = inspect.signature(srv.ArmServicer.__init__).parameters
+# README default (80) that the real arm actually runs with. The servicer is now
+# shared with the reBot (whose CLI default IS 50), so its default is no longer
+# "the OpenArm's": what matters is that main() forwards every CLI value
+# explicitly, so the shared default never applies to the real OpenArm.
+def test_main_forwards_cli_tuning_to_servicer(mocked_main):
+    srv.main()
+    args = srv.parse_args()  # same (mocked) argv as main() saw
+    kwargs = srv.ArmServicer.call_args.kwargs
     for name in ("interp_hz", "interp_alpha", "max_ik_jump_deg", "max_ik_jump_violations", "max_target_lead_mm"):
-        assert params[name].default == getattr(args, name), name
+        assert kwargs[name] == getattr(args, name), name
+    assert args.max_target_lead_mm == 80.0  # the README-documented default
 
 
 def test_normal_shutdown_disables_and_disconnects(mocked_main):
