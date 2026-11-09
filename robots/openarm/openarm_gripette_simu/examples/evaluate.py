@@ -1074,6 +1074,30 @@ def policy_action_queue(policy):
     return q.get("action") if isinstance(q, dict) else None
 
 
+def act_image_size(policy):
+    """(h, w) an ACT checkpoint was trained on, or None for other policies.
+
+    ACT feeds the frame to its backbone as is (no internal resize, unlike
+    Diffusion/pi05), so a Gripette stream at another size (648x486 by default)
+    shows objects at the wrong scale. Same camera and FOV as the Grabette, so a
+    plain rescale restores the training view."""
+    config = getattr(policy, "config", None)
+    if getattr(config, "type", None) != "act":
+        return None
+    _c, h, w = config.input_features["observation.images.cam0"].shape
+    return int(h), int(w)
+
+
+def match_image_size(img, hw):
+    """Rescale an HWC frame to hw = (h, w); unchanged if hw is None or already matches."""
+    if hw is None or img.shape[:2] == tuple(hw):
+        return img
+    h, w = hw
+    # AREA to shrink (no aliasing), LINEAR to enlarge.
+    interp = cv2.INTER_AREA if h < img.shape[0] else cv2.INTER_LINEAR
+    return cv2.resize(img, (w, h), interpolation=interp)
+
+
 def build_observation(
     arm_stub,
     arm_pb2,
@@ -1207,6 +1231,10 @@ def run_episode(
     # executed since this observation was captured".
     prev_loop_start = None
     loop_periods = []
+    # Local ACT only: frames are rescaled to the training size before inference.
+    image_hw = act_image_size(policy)
+    if image_hw is not None:
+        logger.info(f"ACT: camera frames rescaled to the training size {image_hw[1]}x{image_hw[0]}")
 
     for step in range(max_steps):
         loop_start = time.perf_counter()
@@ -1245,7 +1273,7 @@ def run_episode(
 
         if client is None:
             state_tensor = torch.from_numpy(state).float()
-            image_tensor = torch.from_numpy(camera_image).float() / 255.0
+            image_tensor = torch.from_numpy(match_image_size(camera_image, image_hw)).float() / 255.0
             image_tensor = image_tensor.permute(2, 0, 1).contiguous()
 
             batch = {
