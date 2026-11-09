@@ -32,3 +32,7 @@ eval_debug_frames/
 
 # subagent-driven-development scratch (ledger, briefs, review packages)
 .superpowers/
+
+# Training checkpoints (lerobot-train --output_dir) and evaluation result logs
+outputs/
+results_*.jsonl
