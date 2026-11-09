@@ -526,6 +526,11 @@ def parse_args():
                         "until the live view matches a demo start frame, then reading "
                         "the joints (examples/read_arm_state.py). Default: the server's "
                         "built-in home.")
+    p.add_argument("--return_home", action="store_true",
+                   help="On exit (normal end, Ctrl-C or crash), after reopening the "
+                        "gripper, move the arm back to --home_joints (or the server's "
+                        "built-in home) through the server's Reset. Straight joint-space "
+                        "ramp: make sure the path is clear.")
     p.add_argument("--grip_gain", type=float, default=1.0,
                    help="Actuator calibration for the gripper: scale the model's gripper "
                         "commands around the open reference (--start_gripper), so open "
@@ -2189,6 +2194,20 @@ def main():
             print(f"gripper reopened to {tuple(args.start_gripper)} on exit", flush=True)
         except Exception as e:  # noqa: BLE001 — best-effort teardown
             print(f"WARNING: could not reopen the gripper on exit: {e}", flush=True)
+        if args.return_home:
+            # Reset blocks until the ramp is done, so it must also run before
+            # the channels close.
+            try:
+                req = arm_pb2.ResetRequest()
+                if args.home_joints is not None:
+                    req.joint_positions.extend(args.home_joints)
+                resp = arm_stub.Reset(req)
+                if resp.success:
+                    print("arm returned home on exit", flush=True)
+                else:
+                    print(f"WARNING: return home failed: {resp.error}", flush=True)
+            except Exception as e:  # noqa: BLE001 — best-effort teardown
+                print(f"WARNING: could not return the arm home on exit: {e}", flush=True)
         for close in (camera.stop, arm_channel.close, gripper_channel.close):
             try:
                 close()
