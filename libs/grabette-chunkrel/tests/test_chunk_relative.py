@@ -14,8 +14,10 @@ from grabette_chunkrel.chunk_relative import (
     DEFAULT_JUMP_CAP_DEG,
     DEFAULT_JUMP_CAP_M,
     from_chunk_relative,
+    rotation_jump_cap_deg,
     splice_jumps,
     splice_rotation_jumps,
+    stats_jump_cap_deg,
     to_chunk_relative,
 )
 
@@ -271,6 +273,40 @@ def test_normal_wrist_motion_is_not_spliced():
     )
     _out, n = splice_rotation_jumps(rots)
     assert n == 0
+
+
+def test_rotation_cap_scales_with_fps():
+    """The cap is a rotation SPEED: 5 deg/step at 50 fps, 8.33 at 30 fps."""
+    assert rotation_jump_cap_deg(50) == pytest.approx(5.0)
+    assert rotation_jump_cap_deg(30) == pytest.approx(250.0 / 30)
+    assert DEFAULT_JUMP_CAP_DEG == pytest.approx(rotation_jump_cap_deg(50))
+
+
+def test_fast_wrist_motion_at_30fps_is_kept_with_the_fps_cap():
+    """7 deg/step at 30 fps is 210 deg/s: real motion. The 50 fps cap splices it,
+    the 30 fps one keeps it."""
+    rots = Rotation.from_rotvec(
+        np.cumsum(np.full((10, 3), np.deg2rad(7.0) / np.sqrt(3)), axis=0)
+    )
+    assert splice_rotation_jumps(rots, DEFAULT_JUMP_CAP_DEG)[1] > 0
+    assert splice_rotation_jumps(rots, rotation_jump_cap_deg(30))[1] == 0
+
+
+def test_stats_cap_is_read_from_the_stats():
+    meta = {"jump_cap_deg": np.array([8.0]), "declared_fps": np.array([30])}
+    assert stats_jump_cap_deg(meta) == pytest.approx(8.0)
+
+
+def test_stats_without_a_recorded_cap_were_computed_at_5_deg():
+    """Stats written before the cap was recorded used the fixed 5 deg. That is
+    still right for 50 fps data."""
+    assert stats_jump_cap_deg({"declared_fps": np.array([50])}) == pytest.approx(5.0)
+
+
+def test_old_stats_with_the_wrong_cap_for_their_fps_are_refused():
+    """Old 30 fps stats spliced real motion at 5 deg: recompute, don't reuse."""
+    with pytest.raises(ValueError, match="recompute"):
+        stats_jump_cap_deg({"declared_fps": np.array([30])})
 
 
 def test_rotation_splice_handles_degenerate_input():

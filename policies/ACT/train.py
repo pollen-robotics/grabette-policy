@@ -14,7 +14,8 @@ See `libs/grabette-chunkrel/README.md`.
 
 Before building the pipeline it refuses, rather than silently training wrong:
   - dataset action stats that are not chunk-relative, or were computed for
-    another chunk_size (`write_relative_action_stats`);
+    another chunk_size (`write_relative_action_stats`). The step splices
+    rotation glitches with the cap recorded in those stats (fps-dependent);
   - a non-8-D action (the 11-D per-step-delta datasets from convert_dataset.py);
   - temporal ensembling (it averages chunks with different reference poses).
 
@@ -49,7 +50,12 @@ def _as_int(value):
 
 def check_relative_stats(dataset_stats, chunk_size):
     """Refuse absolute stats, or chunk-relative stats computed for another
-    chunk_size: both normalise with the wrong scale and the loss won't show it."""
+    chunk_size: both normalise with the wrong scale and the loss won't show it.
+
+    Returns the rotation cap the stats were computed with: the training step
+    must splice with the same one."""
+    from grabette_chunkrel.chunk_relative import stats_jump_cap_deg
+
     meta = (dataset_stats or {}).get(_RELATIVE_MARKER)
     if meta is None:
         raise RuntimeError(
@@ -64,6 +70,10 @@ def check_relative_stats(dataset_stats, chunk_size):
             f"uses chunk_size={chunk_size}. Relative-action stats scale with the "
             "horizon; recompute them for this chunk size."
         )
+    try:
+        return stats_jump_cap_deg(meta)
+    except ValueError as e:
+        raise RuntimeError(str(e)) from e
 
 
 def check_act_config(policy_cfg):
@@ -102,21 +112,31 @@ def _fresh_pipeline(policy_cfg, pretrained_path=None, pretrained_revision=None, 
     # On resume/fine-tune lerobot replaces the saved normaliser stats with the
     # current dataset's (normalizer_processor override), so check those.
     override = (kwargs.get("preprocessor_overrides") or {}).get("normalizer_processor", {})
-    check_relative_stats(kwargs.get("dataset_stats") or override.get("stats"), policy_cfg.chunk_size)
+    jump_cap_deg = check_relative_stats(kwargs.get("dataset_stats") or override.get("stats"),
+                                        policy_cfg.chunk_size)
 
     if pretrained_path is not None:
         # Resume or fine-tune: the saved pipeline already carries the steps.
         pre, post = _original(policy_cfg, pretrained_path=pretrained_path,
                               pretrained_revision=pretrained_revision, **kwargs)
-        if not any(isinstance(s, ChunkRelativeActionsStep) for s in pre.steps):
+        forward = [s for s in pre.steps if isinstance(s, ChunkRelativeActionsStep)]
+        if not forward:
             raise RuntimeError(
                 f"the processor pipeline at {pretrained_path} has no chunk-relative "
                 "steps: it was not trained with this launcher."
             )
+        # The saved step keeps its own cap; it must match the current stats.
+        if abs(forward[0].jump_cap_deg - jump_cap_deg) > 1e-6:
+            raise RuntimeError(
+                f"the pipeline at {pretrained_path} splices rotations at "
+                f"jump_cap_deg={forward[0].jump_cap_deg:.2f} but the dataset stats were "
+                f"computed at {jump_cap_deg:.2f} (another fps). Train from scratch on "
+                "this dataset or use stats at the checkpoint's fps."
+            )
         return pre, post
 
     pre, post = _original(policy_cfg, **kwargs)
-    return insert_chunk_relative(pre, post)
+    return insert_chunk_relative(pre, post, jump_cap_deg=jump_cap_deg)
 
 
 def _refuse_remote(cfg):

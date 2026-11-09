@@ -190,8 +190,11 @@ class AbsoluteFromChunkRelativeStep(ProcessorStep):
         return features
 
 
-def insert_chunk_relative(pre, post):
+def insert_chunk_relative(pre, post, jump_cap_deg=DEFAULT_JUMP_CAP_DEG):
     """Add the chunk-relative steps to pipelines that have no relative slot (ACT).
+
+    `jump_cap_deg` must be the cap the dataset stats were computed with
+    (`stats_jump_cap_deg`).
 
     pi05 ships a `RelativeActionsProcessorStep` slot that its launcher replaces;
     ACT's pipeline has none, so the pair is inserted instead:
@@ -215,7 +218,7 @@ def insert_chunk_relative(pre, post):
             raise ValueError(f"no {cls.__name__} in {[type(s).__name__ for s in steps]}")
         return idx[0]
 
-    forward = ChunkRelativeActionsStep()
+    forward = ChunkRelativeActionsStep(jump_cap_deg=jump_cap_deg)
     pre_steps = list(pre.steps)
     pre_steps.insert(index_of(pre_steps, DeviceProcessorStep), forward)
     post_steps = list(post.steps)

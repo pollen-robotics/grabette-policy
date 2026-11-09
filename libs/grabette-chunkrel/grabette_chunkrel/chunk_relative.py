@@ -61,14 +61,60 @@ from scipy.spatial.transform import Rotation
 # the same value as convert_dataset.py's --despike_max_mm.
 DEFAULT_JUMP_CAP_M = 0.08
 
-# Per-step ROTATION above this is a glitch. Matches convert_dataset.py's
-# --despike_max_deg, whose help records why it is 5 and not 45: at 45 the
-# 5-45 deg glitches reached training, "the policy reproduced them at eval,
-# amplified through the widened r6d normalization ranges, and tripped the arm
-# server's IK-jump watchdog". 5 deg/step is 250 deg/s at 50 fps, above human
-# wrist speed (~150 deg/s peak). Rotation glitches are real in this data, so
-# repairing translation alone would be a regression against the delta pipeline.
-DEFAULT_JUMP_CAP_DEG = 5.0
+# ROTATION faster than this is a glitch. It is a speed, not a per-step angle:
+# the per-step cap is `rotation_jump_cap_deg(fps)`. 250 deg/s is the 5 deg/step
+# of convert_dataset.py's --despike_max_deg at 50 fps, whose help records why it
+# is 5 and not 45: at 45 the 5-45 deg glitches reached training, "the policy
+# reproduced them at eval, amplified through the widened r6d normalization
+# ranges, and tripped the arm server's IK-jump watchdog". It sits above human
+# wrist speed (~150 deg/s peak). A fixed 5 deg/step would be only 150 deg/s at
+# 30 fps and splice real fast wrist motion. Rotation glitches are real in this
+# data, so repairing translation alone would be a regression against the delta
+# pipeline.
+MAX_ROT_SPEED_DEG_S = 250.0
+
+# Per-step translation stays fixed: 80 mm/step is far above hand speed at any
+# fps we record at, and what it catches (relocalisation jumps) is fps-agnostic.
+
+
+def rotation_jump_cap_deg(fps: float) -> float:
+    """Per-step rotation cap for a dataset recorded at `fps`."""
+    return MAX_ROT_SPEED_DEG_S / float(fps)
+
+
+# The cap when the fps is not known: 50 fps, the value every caller used before
+# the cap followed the dataset (5 deg).
+DEFAULT_JUMP_CAP_DEG = rotation_jump_cap_deg(50)
+
+
+def _scalar(value) -> float:
+    """A stats leaf as a float (lerobot loads every leaf as a numpy array)."""
+    return float(np.asarray(value).reshape(-1)[0])
+
+
+def stats_jump_cap_deg(meta: dict) -> float:
+    """The rotation cap that chunk-relative stats were computed with.
+
+    `meta` is the `action_relative_meta` entry `write_relative_action_stats`
+    leaves in meta/stats.json. Training must splice with this same cap, or the
+    normaliser describes a different distribution than the model is fed.
+
+    Stats written before the cap was recorded used the fixed 5 deg. That is
+    still correct at 50 fps; at any other fps it spliced real motion (or let
+    glitches through), so those stats are refused rather than reused.
+    """
+    if "jump_cap_deg" in meta:
+        return _scalar(meta["jump_cap_deg"])
+    fps = meta.get("declared_fps")
+    expected = rotation_jump_cap_deg(_scalar(fps)) if fps is not None else None
+    if expected is not None and not np.isclose(expected, DEFAULT_JUMP_CAP_DEG):
+        raise ValueError(
+            f"these chunk-relative stats were computed with the old fixed "
+            f"{DEFAULT_JUMP_CAP_DEG:g} deg rotation cap, but the dataset is "
+            f"{_scalar(fps):g} fps, which needs {expected:.2f} deg: recompute "
+            "them with write_relative_action_stats."
+        )
+    return DEFAULT_JUMP_CAP_DEG
 
 POSE_DIMS = 6          # x, y, z, ax, ay, az
 GRIPPER_DIMS = 2       # proximal, distal
@@ -124,8 +170,9 @@ def splice_rotation_jumps(
 
     The median is taken **componentwise on the step rotvecs**, which is legitimate
     here for the reason it is *not* legitimate for the chunk reference: a valid
-    step is under 5 deg, and at that scale the Lie algebra is an excellent linear
-    approximation (the BCH error term is 1/2|a x b|, ~0.2 deg at 5 deg). The same
+    step is under the cap (5 deg at 50 fps, 8.3 at 30), and at that scale the Lie
+    algebra is an excellent linear approximation (the BCH error term is
+    1/2|a x b|, ~0.2 deg at 5 deg, ~0.6 at 8.3). The same
     small-angle argument fails for a chunk-wide reference precisely because the
     reference is a large arbitrary hand orientation.
 
@@ -163,7 +210,8 @@ def to_chunk_relative(
         chunk: (T, 8) absolute `[x,y,z,ax,ay,az,proximal,distal]`.
         rot: `"rotvec"` (keeps 8 dims) or `"r6d"` (11 dims).
         jump_cap_m: per-step translation above which a step is a SLAM jump.
-        jump_cap_deg: per-step rotation above which a step is a SLAM jump.
+        jump_cap_deg: per-step rotation above which a step is a SLAM jump;
+            `rotation_jump_cap_deg(fps)` for the dataset's fps.
 
     Returns:
         (T, 8) or (T, 11) relative actions, and a report dict.

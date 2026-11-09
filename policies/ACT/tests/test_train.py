@@ -47,16 +47,24 @@ def _moments(dim):
     return {"mean": np.zeros(dim), "std": np.ones(dim), "min": -np.ones(dim), "max": np.ones(dim)}
 
 
-def stats(chunk_size=K):
-    """Stats as lerobot hands them over: every leaf a numpy array."""
+def stats(chunk_size=K, jump_cap_deg=5.0, fps=50):
+    """Stats as lerobot hands them over: every leaf a numpy array.
+    `jump_cap_deg=None` mimics stats written before the cap was recorded."""
     s = {
         "action": _moments(8),
         "observation.state": _moments(2),
         "observation.images.cam0": {"mean": np.full((3, 1, 1), 0.5), "std": np.full((3, 1, 1), 0.25)},
     }
     if chunk_size is not None:
-        s["action_relative_meta"] = {"chunk_size": np.array([chunk_size])}
+        meta = {"chunk_size": np.array([chunk_size]), "declared_fps": np.array([fps])}
+        if jump_cap_deg is not None:
+            meta["jump_cap_deg"] = np.array([jump_cap_deg])
+        s["action_relative_meta"] = meta
     return s
+
+
+def forward_step(pre):
+    return next(s for s in pre.steps if type(s).__name__ == "ChunkRelativeActionsStep")
 
 
 def names(pipe):
@@ -77,6 +85,12 @@ def test_check_relative_stats_rejects_chunk_mismatch():
 
 def test_check_relative_stats_accepts_match():
     tr.check_relative_stats(stats(chunk_size=K), K)
+
+
+def test_check_relative_stats_rejects_old_stats_at_the_wrong_cap():
+    """30 fps stats written before the cap followed fps spliced real motion."""
+    with pytest.raises(RuntimeError, match="recompute"):
+        tr.check_relative_stats(stats(jump_cap_deg=None, fps=30), K)
 
 
 # ── config ──────────────────────────────────────────────────────────────
@@ -111,6 +125,22 @@ def test_fresh_pipeline_installs_steps():
     pre, post = tr._fresh_pipeline(act_cfg(), dataset_stats=stats())
     assert "ChunkRelativeActionsStep" in names(pre)
     assert "AbsoluteFromChunkRelativeStep" in names(post)
+
+
+def test_fresh_pipeline_splices_with_the_stats_cap():
+    """Training must splice exactly what the stats spliced, or the normaliser
+    describes a different distribution than the model sees."""
+    pre, _ = tr._fresh_pipeline(act_cfg(), dataset_stats=stats(jump_cap_deg=250 / 30, fps=30))
+    assert forward_step(pre).jump_cap_deg == pytest.approx(250 / 30)
+
+
+def test_pretrained_path_rejects_a_cap_other_than_the_stats(tmp_path):
+    """Fine-tuning a 50 fps checkpoint on 30 fps stats: the saved step would
+    keep splicing at 5 deg while the stats were computed at 8.33."""
+    _saved_chunkrel_pipeline(tmp_path)
+    with pytest.raises(RuntimeError, match="jump_cap_deg"):
+        tr._fresh_pipeline(act_cfg(), pretrained_path=str(tmp_path),
+                           dataset_stats=stats(jump_cap_deg=250 / 30, fps=30))
 
 
 def test_fresh_pipeline_passthrough_when_pretrained(tmp_path):

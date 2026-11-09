@@ -34,7 +34,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from grabette_chunkrel.chunk_relative import to_chunk_relative
+from grabette_chunkrel.chunk_relative import rotation_jump_cap_deg, to_chunk_relative
 
 # Quantiles pi05's QUANTILES mode reads, plus the moments other modes use.
 _QUANTILES = {"q01": 0.01, "q99": 0.99}
@@ -80,6 +80,10 @@ def relative_action_stats(
     root = Path(root)
     info = json.loads((root / "meta" / "info.json").read_text())
     stride = stride or chunk_size
+    # The rotation-glitch cap is a speed, so its per-step value needs the fps.
+    if not info.get("fps"):
+        raise ValueError(f"no fps in {root / 'meta' / 'info.json'}: cannot set the rotation cap")
+    jump_cap_deg = rotation_jump_cap_deg(info["fps"])
 
     parquets = sorted((root / "data").rglob("*.parquet"))
     if not parquets:
@@ -93,7 +97,8 @@ def relative_action_stats(
     for _epi, g in df.groupby("episode_index"):
         a = np.stack(g["action"].to_numpy()).astype(np.float64)
         for t in _chunk_starts(len(a), chunk_size, stride):
-            out, rep = to_chunk_relative(a[t:t + chunk_size], rot=rot)
+            out, rep = to_chunk_relative(a[t:t + chunk_size], rot=rot,
+                                         jump_cap_deg=jump_cap_deg)
             rel.append(out)
             n_jumps += rep["n_jumps_spliced"]
             n_rot_jumps += rep["n_rot_jumps_spliced"]
@@ -121,6 +126,8 @@ def relative_action_stats(
         "n_jumps_spliced": n_jumps,
         "n_rot_jumps_spliced": n_rot_jumps,
         "declared_fps": info.get("fps"),
+        # Training reads this back so its step splices exactly what these stats did.
+        "jump_cap_deg": jump_cap_deg,
     }
 
 

@@ -93,6 +93,9 @@ def _check_stats_match_representation(policy_cfg, dataset_stats):
         checkout. It ran to completion and checkpointed.
       - absolute stats + relative actions: rotation channels normalise OUTSIDE
         [-1, 1] (measured), i.e. values the model never sees in training.
+
+    Returns the rotation cap the chunk-relative stats were computed with (None
+    for absolute stats): the training step must splice with the same one.
     """
     meta = (dataset_stats or {}).get(_RELATIVE_MARKER)
     if meta is not None and not _CHUNK_RELATIVE:
@@ -111,7 +114,7 @@ def _check_stats_match_representation(policy_cfg, dataset_stats):
             "[-1, 1]."
         )
     if meta is None:
-        return
+        return None
 
     # The stats are horizon-dependent: a 50-frame offset spans further than a
     # 15-frame one, so stats computed for another chunk length are the wrong
@@ -124,10 +127,18 @@ def _check_stats_match_representation(policy_cfg, dataset_stats):
             f"policy uses chunk_size={policy_chunk}. Relative-action stats scale "
             "with the horizon; recompute them for this chunk size."
         )
-    print(f"[chunk-relative] dataset stats match: chunk_size={stats_chunk}")
+    from grabette_chunkrel.chunk_relative import stats_jump_cap_deg
+
+    try:
+        jump_cap_deg = stats_jump_cap_deg(meta)
+    except ValueError as e:
+        raise RuntimeError(str(e)) from e
+    print(f"[chunk-relative] dataset stats match: chunk_size={stats_chunk}, "
+          f"rotation cap {jump_cap_deg:.2f} deg/step")
+    return jump_cap_deg
 
 
-def _install_chunk_relative(pre, post):
+def _install_chunk_relative(pre, post, jump_cap_deg):
     """Swap LeRobot's elementwise relative steps for the composed ones.
 
     LeRobot's built-in subtracts `observation.state` componentwise, which is not
@@ -167,7 +178,7 @@ def _install_chunk_relative(pre, post):
             "normalise with the wrong scale"
         )
 
-    forward = ChunkRelativeActionsStep()
+    forward = ChunkRelativeActionsStep(jump_cap_deg=jump_cap_deg)
     pre_steps = list(pre.steps)
     pre_steps[pre_names.index("RelativeActionsProcessorStep")] = forward
     post_steps = list(post.steps)
@@ -190,10 +201,10 @@ def _fresh_pipeline(policy_cfg, pretrained_path=None, pretrained_revision=None, 
     # dataset_stats.
     kwargs.pop("preprocessor_overrides", None)
     kwargs.pop("postprocessor_overrides", None)
-    _check_stats_match_representation(policy_cfg, kwargs.get("dataset_stats"))
+    jump_cap_deg = _check_stats_match_representation(policy_cfg, kwargs.get("dataset_stats"))
     pre, post = _original(policy_cfg, pretrained_path=None, pretrained_revision=None, **kwargs)
     if _CHUNK_RELATIVE:
-        pre, post = _install_chunk_relative(pre, post)
+        pre, post = _install_chunk_relative(pre, post, jump_cap_deg)
     return pre, post
 
 
