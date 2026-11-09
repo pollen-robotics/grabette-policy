@@ -18,7 +18,18 @@ cd policies/ACT && uv sync
 - `observation.state` is the 2-D gripper pair (`action[6:8]`). Datasets older
   than `generate_dataset.py` emitting it must have it added first.
 
-Write the chunk-relative action stats for the chunk size you will train with:
+**One-shot prep:** `run_pipeline.sh` cleans, normalises, optionally projects
+the gripper, resizes the images to 648x486 (the Gripette's stream size: ACT
+has no internal resize; `evaluate.py` also rescales live frames to the
+checkpoint's size), decode-checks the videos and writes the stats below, then
+prints the train command:
+
+```bash
+./run_pipeline.sh simheo/red-cube-blue-box --camera right_cam0 --strip-prefix right_
+```
+
+The stats' rotation cap follows `fps` in `meta/info.json`, so it must be the
+real rate. By hand, write the chunk-relative action stats for the chunk size you will train with:
 
 ```bash
 uv run --project ../../libs/grabette-dataset-tools python -c "from pathlib import Path; from grabette_dataset_tools.chunk_relative_stats import write_relative_action_stats as w; w(Path('<dataset root>'), chunk_size=50)"
