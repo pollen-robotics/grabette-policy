@@ -132,7 +132,7 @@ def fake_grip_pb2():
             motor1_goal=motor1_goal, motor2_goal=motor2_goal))
 
 
-def drive(ev, chunks, n_chunks, grasp_projection=None, chunk_relative=True):
+def drive(ev, chunks, n_chunks, grasp_projection=None, chunk_relative=True, **kw):
     arm, grip, cam = FakeArm(), FakeGripper(), FakeCamera()
     conv = chunkrel.ChunkRelativeDeltas() if chunk_relative else None
     result = ev.run_episode(
@@ -148,6 +148,7 @@ def drive(ev, chunks, n_chunks, grasp_projection=None, chunk_relative=True):
         task="pick up the object",
         grasp_projection=grasp_projection,
         chunk_relative=conv,
+        **kw,
     )
     return arm, grip, result
 
@@ -235,6 +236,19 @@ def test_the_gripper_channel_is_the_last_two_dims_not_a_rotation_component(ev):
     assert len(grip.goals) == len(want)
     for (g1, g2), (w1, w2) in zip(grip.goals, want):
         assert abs(g1 - w1) < 1e-5 and abs(g2 - w2) < 1e-5
+
+
+def test_translation_gain_scales_positions_only(ev):
+    """--translation_gain scales every sent position delta and nothing else:
+    rotations and gripper goals must be identical to the unscaled run."""
+    chunks = make_chunks(2, seed=5)
+    arm1, grip1, _ = drive(ev, chunks, 2)
+    arm2, grip2, _ = drive(ev, chunks, 2, translation_gain=0.8)
+    assert len(arm1.deltas) == len(arm2.deltas) == 2 * K
+    for (p1, r1), (p2, r2) in zip(arm1.deltas, arm2.deltas):
+        assert np.allclose(p2, 0.8 * p1, atol=1e-7)
+        assert np.allclose(r2, r1, atol=1e-7)
+    assert grip1.goals == grip2.goals
 
 
 def test_chunk_relative_and_the_grasp_projection_together(ev):

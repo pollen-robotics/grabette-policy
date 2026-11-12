@@ -446,6 +446,11 @@ def parse_args():
                         "Caps outlier samples (e.g. Diffusion 'explosions'). Cartesian only.")
     p.add_argument("--clamp_rot_deg", type=float, default=None,
                    help="Safety test: clip per-step rotation-delta angle to this (deg). Cartesian only.")
+    p.add_argument("--translation_gain", type=float, default=1.0,
+                   help="Scale the policy's per-step position deltas before sending (rotation untouched). "
+                        "Compensates arm over-travel: on the real OpenArm a commanded 40 mm forward moved "
+                        "the camera ~48 mm near the start pose, so ~0.85 restores demo-scale motion. "
+                        "Applied before --clamp_pos_mm. Cartesian only.")
     p.add_argument("--max_ticks", type=int, default=1,
                    help="Max chunk actions consumed per loop iteration to compensate a "
                         "slow loop (wallclock catch-up). 1 (default) = one action per "
@@ -803,7 +808,7 @@ class ChunkExecutor:
     """
 
     def __init__(self, arm_stub, arm_pb2, gripper_stub, gripper_pb2, fps,
-                 clamp_pos_m=None, clamp_rot_rad=None,
+                 clamp_pos_m=None, clamp_rot_rad=None, translation_gain=1.0,
                  start_pos=None, start_rot=None, latch_close=None,
                  grip_gain=1.0, grip_ref=(0.0, 0.0), grip_torque_limit=0.0):
         self._arm_stub = arm_stub
@@ -813,6 +818,7 @@ class ChunkExecutor:
         self._dt = 1.0 / fps
         self._clamp_pos_m = clamp_pos_m
         self._clamp_rot_rad = clamp_rot_rad
+        self._translation_gain = translation_gain
         self._lock = threading.Lock()
         self._chunk = []
         self._i = 0
@@ -872,7 +878,7 @@ class ChunkExecutor:
             if a is None:
                 self.underruns += 1
             else:
-                dp, dr6, grip = a[:3], a[3:9], a[9:]
+                dp, dr6, grip = a[:3] * self._translation_gain, a[3:9], a[9:]
                 if self._clamp_pos_m is not None or self._clamp_rot_rad is not None:
                     dp, dr6, was = clamp_delta(dp, dr6, self._clamp_pos_m, self._clamp_rot_rad)
                     self.n_clamped += int(was)
@@ -1166,6 +1172,7 @@ def run_episode(
     joint_mode=False,
     clamp_pos_m=None,
     clamp_rot_rad=None,
+    translation_gain=1.0,
     max_ticks=1,
     skip_stale=False,
     log_gripper=False,
@@ -1432,6 +1439,7 @@ def run_episode(
                     dp, dr6, gripper_goal = chunk_relative.step(a_np)
                 else:
                     dp, dr6, gripper_goal = a_np[:3], a_np[3:9], a_np[9:]
+                dp = dp * translation_gain
                 if clamp_pos_m is not None or clamp_rot_rad is not None:
                     dp, dr6, was = clamp_delta(dp, dr6, clamp_pos_m, clamp_rot_rad)
                     n_clamped += int(was)
@@ -1697,6 +1705,7 @@ def run_episode_async(
     task,
     clamp_pos_m=None,
     clamp_rot_rad=None,
+    translation_gain=1.0,
     latch_close=None,
     commit_close=None,
     log_deltas=False,
@@ -1741,6 +1750,7 @@ def run_episode_async(
     ep_start_pos, ep_start_rot = capture_start_pose(arm_stub, arm_pb2)
     executor = ChunkExecutor(arm_stub, arm_pb2, gripper_stub, gripper_pb2, fps,
                              clamp_pos_m=clamp_pos_m, clamp_rot_rad=clamp_rot_rad,
+                             translation_gain=translation_gain,
                              start_pos=ep_start_pos.astype(np.float64),
                              start_rot=ep_start_rot.astype(np.float64),
                              latch_close=latch_close,
@@ -2304,6 +2314,7 @@ def main():
                 task=args.task,
                 clamp_pos_m=(args.clamp_pos_mm / 1000.0) if args.clamp_pos_mm else None,
                 clamp_rot_rad=(np.deg2rad(args.clamp_rot_deg)) if args.clamp_rot_deg else None,
+                translation_gain=args.translation_gain,
                 latch_close=args.latch_close,
                 commit_close=args.commit_close,
                 grip_gain=args.grip_gain,
@@ -2347,6 +2358,7 @@ def main():
             joint_mode=joint_mode,
             clamp_pos_m=(args.clamp_pos_mm / 1000.0) if args.clamp_pos_mm else None,
             clamp_rot_rad=(np.deg2rad(args.clamp_rot_deg)) if args.clamp_rot_deg else None,
+            translation_gain=args.translation_gain,
             max_ticks=args.max_ticks,
             skip_stale=args.skip_stale,
             client=client,
