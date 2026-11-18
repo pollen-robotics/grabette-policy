@@ -56,12 +56,14 @@ def test_arm_joint_names_stay_a_seven_element_list():
 
 
 def test_masked_dofs_are_declared():
-    """Without masking, IK can 'reach' a target by closing the fingers."""
+    """Without masking, IK can 'reach' a target by closing the fingers.
+
+    The wrist-roll mimic is NOT masked: it carries the gripper chain, so it is
+    coupled to r_wrist_roll instead (masking it froze the roll, SIM-1)."""
     from openarm_gripette_simu.kinematics import OPENARM_SPEC
 
-    assert set(OPENARM_SPEC.masked_dofs) == {
-        "proximal", "distal", "r_wrist_roll_mimic",
-    }
+    assert set(OPENARM_SPEC.masked_dofs) == {"proximal", "distal"}
+    assert OPENARM_SPEC.mimic_joints == (("r_wrist_roll_mimic", "r_wrist_roll", -1.0),)
 
 
 @pytest.mark.parametrize("stub", ["arm_pb2", "arm_pb2_grpc",

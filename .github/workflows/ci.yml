@@ -64,6 +64,12 @@ jobs:
           sys.exit(1 if failed else 0)
           PY
 
+      - name: Headless GL for MuJoCo
+        # The sim tests render offscreen with MUJOCO_GL=egl (tests/conftest.py);
+        # `import mujoco` then needs libEGL, which the runner image lacks.
+        # Mesa provides a software EGL device, no GPU or display needed.
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libegl-mesa0 libgl1-mesa-dri
+
       - name: OpenArm tests (sim + real driver, no hardware)
         # Runs in this job because it already has the full workspace env
         # (MuJoCo, placo, lerobot, torch) and the LFS meshes. Test dirs are
