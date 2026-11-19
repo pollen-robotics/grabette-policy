@@ -7,13 +7,14 @@ sinusoid on one axis. If that still looks jerky on the arm, the issue is
 downstream (IK jacobian weirdness, stiff MIT gains, motor tracking).
 
 Defaults are conservative: 2 cm amplitude, 0.25 Hz (4 s period), on the Y axis
-(side-to-side — least gravity interaction). Ramps in from zero over 2 s and
-ramps back out at the end. A hard safety cap on per-step displacement aborts
-before sending if the chosen amplitude/frequency would produce a step larger
-than MAX_PER_STEP_MM.
+of the CAMERA-LOCAL frame (SendCartesianDelta deltas are applied in the
+camera/TCP frame, not world axes). Ramps in from zero over 2 s and ramps back
+out at the end. A hard safety cap on per-step displacement aborts before
+sending if the chosen amplitude/frequency would produce a step larger than
+MAX_PER_STEP_MM, and every sent delta is clamped to it (RPC stalls).
 
 Usage:
-  # Safe defaults (Y-axis sinusoid, ±2 cm at 0.25 Hz, 10 s run)
+  # Safe defaults (camera-local Y sinusoid, ±2 cm at 0.25 Hz, 10 s run)
   uv run python examples/cartesian_sinusoid.py \\
       --arm_addr 192.168.10.147:50052
 
@@ -46,6 +47,18 @@ MAX_PER_STEP_MM = 4.0
 # Ramp-in/out duration (seconds). Amplitude is multiplied by a 0->1->0 window
 # so the motion starts and ends at zero velocity.
 DEFAULT_RAMP_S = 2.0
+
+
+def clamp_step(target: float, prev_commanded: float, max_step_m: float) -> tuple[float, float]:
+    """Per-step delta toward `target`, clamped to +/- max_step_m.
+
+    The startup check bounds the step at the NOMINAL dt only; after an RPC
+    stall, target(t) - prev spans the whole stall (a 1 s stall at the
+    defaults is ~30 mm in one delta). Clamping lets the commanded offset
+    catch up over several steps instead. Returns (delta, new_prev_commanded).
+    """
+    delta = float(np.clip(target - prev_commanded, -max_step_m, max_step_m))
+    return delta, prev_commanded + delta
 
 
 def parse_args():
@@ -131,9 +144,9 @@ def main():
             # Commanded target offset from start on the chosen axis.
             target = envelope * amplitude_m * np.sin(omega * t)
 
-            # Per-step delta is the change since the previous commanded value.
-            delta_axis = target - prev_commanded
-            prev_commanded = target
+            # Per-step delta is the change since the previous commanded value,
+            # clamped to MAX_PER_STEP_MM (see clamp_step: RPC stalls).
+            delta_axis, prev_commanded = clamp_step(target, prev_commanded, MAX_PER_STEP_MM / 1000.0)
 
             delta = np.zeros(3)
             delta[axis_index] = delta_axis
@@ -157,12 +170,12 @@ def main():
             if step % 5 == 0:
                 logger.info(
                     f"t={t:5.2f}s step={step:4d} | "
-                    f"commanded {target * 1000:+7.2f}mm | actual {actual_offset * 1000:+7.2f}mm | "
+                    f"commanded {prev_commanded * 1000:+7.2f}mm | actual {actual_offset * 1000:+7.2f}mm | "
                     f"delta {delta_mm:5.2f}mm | envelope {envelope:.2f}"
                 )
 
             if csv_file:
-                csv_file.write(f"{t:.4f},{target:.6f},{actual_offset:.6f},{delta_mm:.4f}\n")
+                csv_file.write(f"{t:.4f},{prev_commanded:.6f},{actual_offset:.6f},{delta_mm:.4f}\n")
 
             step += 1
 

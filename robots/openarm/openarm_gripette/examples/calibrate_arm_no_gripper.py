@@ -10,6 +10,8 @@
 # Apart from gripper removal, the calibration sequence is IDENTICAL to the
 # upstream tool: the same bump-to-stop motions, the same step sizes and gains,
 # the same ideal-zero positions per joint, the same per-joint sign convention.
+# One safety addition: bump_to_limit aborts (no zeros written) if no stop is
+# detected within the joint's full mechanical range.
 #
 # Usage (right arm):
 #   sudo ip link set can0 up type can bitrate 1000000
@@ -54,6 +56,10 @@ mech_lim = {
     JointID.J6: [np.deg2rad(-45),  np.deg2rad(45)],
     JointID.J7: [np.deg2rad(-90),  np.deg2rad(90)],
 }
+
+# Slack beyond a joint's full mechanical range before bump_to_limit gives up
+# (commanded target leads the measured position by a few degrees under load).
+MAX_TRAVEL_MARGIN_RAD = np.deg2rad(10.0)
 
 # Per-joint sign convention used in ideal-zero delta computation
 JOINT_SIGN = {
@@ -101,7 +107,21 @@ def bump_to_limit(openarm, comp, joint_id,
 
     dq_th, tau_th = _hit_thresholds(idx)
 
+    # Travel cap (not in upstream): no joint can travel further than its full
+    # mechanical range before hitting a stop. If the stop is never detected
+    # (stale/dead feedback, wrong thresholds) the open-loop q_target would
+    # otherwise wind up forever, and the motor would lunge toward it as soon
+    # as comms recover. Abort instead — the caller then never writes zeros.
+    lo, hi = mech_lim[joint_id]
+    max_travel_rad = (hi - lo) + MAX_TRAVEL_MARGIN_RAD
+
     while True:
+        if abs(q_target + step_rad - q_start) > max_travel_rad:
+            raise RuntimeError(
+                f"Joint {joint_id.name}: no mechanical stop detected within "
+                f"{np.rad2deg(max_travel_rad):.0f}° of commanded travel — aborting "
+                f"(check CAN feedback). Zeros NOT written."
+            )
         q_target += step_rad
         comp.mit_control_one(idx, oa.MITParam(kp, kd, q_target, 0.0, tau_cmd))
         openarm.recv_all()

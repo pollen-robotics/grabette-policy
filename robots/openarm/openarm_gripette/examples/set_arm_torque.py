@@ -3,8 +3,9 @@
 DANGER: --off makes the motors freewheel — the arm FALLS under gravity.
 Hold the arm or make sure it can drop safely before disabling.
 
-After --on the arm is enabled but holds nothing (limp) until the next
-command; use reset_arm.py to bring it home smoothly from wherever it hangs.
+After --on the arm is enabled and HOLDS its current measured pose (the
+server sets the interpolator target to the measured joints); use
+reset_arm.py to bring it home smoothly from there.
 
 In simulation SetTorque is a no-op (returns success, does nothing).
 
@@ -26,7 +27,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Enable/disable arm motor torque")
     p.add_argument("--arm_addr", type=str, default="localhost:50052", help="ArmService gRPC address")
     group = p.add_mutually_exclusive_group(required=True)
-    group.add_argument("--on", action="store_true", help="Enable torque (arm stays limp until next command)")
+    group.add_argument("--on", action="store_true", help="Enable torque (arm holds its current pose)")
     group.add_argument("--off", action="store_true", help="Disable torque — THE ARM FALLS")
     return p.parse_args()
 

@@ -66,7 +66,7 @@ from concurrent import futures
 
 import grpc
 import numpy as np
-from gripette_core.arm_service import ArmServicer
+from gripette_core.arm_service import DEFAULT_MAX_TARGET_LEAD_MM, ArmServicer
 from gripette_core.kinematics import Kinematics
 from gripette_core.proto import arm_pb2_grpc
 
@@ -102,7 +102,9 @@ def parse_args():
     p.add_argument("--interp_alpha", type=float, default=0.3)
     p.add_argument("--max_ik_jump_deg", type=float, default=15.0)
     p.add_argument("--max_ik_jump_violations", type=int, default=2)
-    p.add_argument("--max_target_lead_mm", type=float, default=50.0)
+    p.add_argument("--max_target_lead_mm", type=float, default=DEFAULT_MAX_TARGET_LEAD_MM,
+                   help="contact guard cap. Default: the OpenArm's hardware-tuned "
+                        "value, not yet tuned on this arm.")
     p.add_argument("--clearance_margin_mm", type=float, default=20.0,
                    help="keep the guarded links this far from the bench. 0 "
                         "disables the gate - see --no_clearance.")
@@ -201,11 +203,14 @@ def main():
         f"{[round(d, 1) for d in args.home_joints]} deg. Reset will RAMP the "
         f"arm to this - make sure it is clear of the table and of itself.")
 
-    logger.info(f"Connecting to the reBot on {args.can} (id={args.id})")
+    # Startup ORDER matters: everything that can fail without the motors
+    # (kinematics load, clearance gate, port bind) runs BEFORE robot.connect().
+    # A second instance must refuse without touching a bus the FIRST server is
+    # actively driving with torque enabled; and once connected, a failure in
+    # the rest of init must still disable torque and disconnect.
     robot = ReBotFollower(ReBotFollowerConfig(port=args.can, id=args.id))
-    robot.connect()
-    logger.info("Connected. Torque is NOT enabled; call SetTorque to arm the robot.")
-
+    # Construction only stores the robot; nothing reads the bus until the
+    # servicer starts, after connect().
     arm_iface = ReBotArmInterface(robot)
 
     logger.info(
@@ -217,42 +222,60 @@ def main():
         orientation_weight=args.ik_orientation_weight,
     )
 
+    # Builds the gate from the model only; it reads arm_iface.get_positions
+    # lazily, per command.
     joint_gate = _build_clearance_gate(args, arm_iface)
-
-    servicer = ArmServicer(
-        arm_iface,
-        kin,
-        home_joints,
-        start_time,
-        joint_gate=joint_gate,
-        interp_hz=args.interp_hz,
-        interp_alpha=args.interp_alpha,
-        max_ik_jump_deg=args.max_ik_jump_deg,
-        max_ik_jump_violations=args.max_ik_jump_violations,
-        max_target_lead_mm=args.max_target_lead_mm,
-    )
 
     # SINGLE-INSTANCE GUARD. gRPC enables SO_REUSEPORT by default on Linux, so
     # a second server binds the same port with no error, and both instances
     # then drive the same CAN bus from their own interpolators. On the OpenArm
     # that made the arm shake violently. Disable reuseport AND check the
-    # return value (add_insecure_port returns 0 on failure).
+    # return value (add_insecure_port returns 0 on failure). Bound BEFORE
+    # connect(), so a refusal leaves the bus untouched; the servicer is
+    # registered later, before start().
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=4),
                          options=[("grpc.so_reuseport", 0)])
-    arm_pb2_grpc.add_ArmServiceServicer_to_server(servicer, server)
     if server.add_insecure_port(f"0.0.0.0:{args.arm_port}") == 0:
         logger.error(
             f"Could not bind port {args.arm_port} — another server is almost "
             f"certainly already running. Refusing to start a second one.")
-        servicer.stop()
-        # Worse here than on Ctrl-C. connect() has already run, on a bus the
-        # FIRST server is actively driving with torque enabled — so feedback is
-        # live and safe_zero would genuinely succeed in hauling the arm to zero
-        # while the other process commands it. The "disabled motors can't be
-        # read, so safe_zero raises" accident does not save us in this path.
-        robot.skip_safe_zero_on_disconnect()
-        robot.disconnect()
         sys.exit(1)
+
+    logger.info(f"Connecting to the reBot on {args.can} (id={args.id})")
+    robot.connect()
+    logger.info("Connected. Torque is NOT enabled; call SetTorque to arm the robot.")
+
+    servicer = None
+    try:
+        servicer = ArmServicer(
+            arm_iface,
+            kin,
+            home_joints,
+            start_time,
+            joint_gate=joint_gate,
+            interp_hz=args.interp_hz,
+            interp_alpha=args.interp_alpha,
+            max_ik_jump_deg=args.max_ik_jump_deg,
+            max_ik_jump_violations=args.max_ik_jump_violations,
+            max_target_lead_mm=args.max_target_lead_mm,
+        )
+        arm_pb2_grpc.add_ArmServiceServicer_to_server(servicer, server)
+        server.start()
+    except BaseException:
+        # Init failed after connect(). Torque was never enabled by this
+        # process (the server comes up limp), so no descent is needed: disable
+        # anyway (belt and braces) and disconnect. safe_zero is already
+        # suppressed from ReBotFollower.__init__; said again for clarity.
+        logger.exception("Server init failed after connect; disabling and disconnecting.")
+        server.stop(0)
+        if servicer is not None:
+            servicer.stop()
+        robot.skip_safe_zero_on_disconnect()
+        try:
+            arm_iface.set_torque(False)
+        finally:
+            robot.disconnect()
+        raise
 
     def shutdown(signum, _frame):
         logger.warning(f"Signal {signum} — stopping, putting the arm down.")
@@ -281,7 +304,6 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
-    server.start()
     logger.info(f"ArmService listening on 0.0.0.0:{args.arm_port}")
     server.wait_for_termination()
 

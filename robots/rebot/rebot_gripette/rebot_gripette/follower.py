@@ -196,10 +196,18 @@ class ReBotFollower(SeeedB601RSFollower):
         sites agreeing, which is not a property at all once one of them
         forgets. Motor 7 is on the bus, it is clamped, it is observed, and
         nothing in this package commands it.
+
+        Non-finite goals are REFUSED: the upstream joint-limit clip
+        `max(lo, min(hi, nan))` returns `hi`, so a NaN would drive the joint
+        into its upper stop. Nothing non-finite may reach the bus.
         """
-        return super().send_action(
-            {k: v for k, v in action.items()
-             if not k.startswith(f"{FOLLOWER_GRIPPER_MOTOR}.")})
+        arm_action = {k: v for k, v in action.items()
+                      if not k.startswith(f"{FOLLOWER_GRIPPER_MOTOR}.")}
+        bad = {k: v for k, v in arm_action.items()
+               if k.endswith(".pos") and not math.isfinite(v)}
+        if bad:
+            raise ValueError(f"Refusing non-finite joint goal(s): {bad}")
+        return super().send_action(arm_action)
 
     def check_joint_directions(self) -> None:
         """Refuse anything but the identity. See the module docstring.

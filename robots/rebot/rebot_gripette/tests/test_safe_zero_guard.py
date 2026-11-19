@@ -141,6 +141,10 @@ def test_the_server_puts_the_arm_down_before_it_cuts_torque():
     import pathlib
     src = (pathlib.Path(__file__).resolve().parents[1]
            / "rebot_gripette" / "grpc_server_real.py").read_text()
+    # Scoped to the signal handler: main() also cuts torque, without a
+    # descent, on an init failure after connect() - torque was never enabled
+    # there, so there is nothing to put down.
+    src = src[src.index("def shutdown("):]
     descent = src.index("robot.controlled_descent()")
     cut = src.index("arm_iface.set_torque(False)")
     assert descent < cut, (

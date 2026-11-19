@@ -95,8 +95,9 @@ the arm. Measure the real bench before trusting any of it on hardware.
 The simulated arm used to droop **7.4°** at the elbow against the real arm's
 2.5°, because the export shipped `kp=50` on every position actuator. That is
 not merely soft, it breaks the control loop: the arm settled 55 mm from the
-pose it was commanded to hold, and `arm_service` reads a 50 mm target lead as
-contact, so the guard fired on physics alone. `postprocess_rebot.py` now
+pose it was commanded to hold, and `arm_service` then read a 50 mm target lead
+as contact, so the guard fired on physics alone. (The cap is now 80 mm, the
+OpenArm's hardware-tuned value; 55 mm of sag would leave it almost no margin.) `postprocess_rebot.py` now
 writes `kp=500` (120 on the gripper, as on the OpenArm), measured at 5 mm
 static error with no overshoot. See that script's ACTUATOR GAINS note for the
 sweep and for why tracking, not fidelity, is the target here.
