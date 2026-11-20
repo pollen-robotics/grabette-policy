@@ -22,6 +22,25 @@ and analysed against a mustard-only dataset. Defensible — mustard is one of
 the three — but not an identical distribution. The sugar work has no such
 gap: checkpoint and data are the same recording.
 
+**6D decode correction (2026-11-04).** Until this date
+`metrics._six_d_to_rotation` (and `refs/check_dr6d.py`, `refs/project_grasp.py`)
+stacked the two 6D vectors as the COLUMNS of R, while every repo encoder writes
+the first two ROWS (`policies/DiffusionPolicy/rotation.py`). Per-step rotations
+were therefore composed as Rᵀ; on a synthetic 50-step chunk at 2°/step that
+moves the endpoint ~15 mm out of ~100 mm. It is fixed in code; the figures
+below were **not** regenerated. Suspect, because they come from composing
+per-step deltas (`representation=PER_STEP_DELTAS`, delta model only):
+
+- §9, the **delta** rows of the endpoint table (travel 124.9 / 132.2 mm, worst
+  and median block), the 2.5× / 2.75× gaps derived from them, and the
+  "124.9 vs 121.4 mm, within 3%" composition check;
+- §10, the `causal, endpoint | delta` row (4.94× / 3.02×);
+- §11, the "endpoint divergence gives 2.5×" retraction;
+- `refs/project_grasp.py`'s `grasp_point_projection.png` (not cited here).
+
+Chunk-relative (`OFFSETS`) figures, RMS metrics, attention mass and
+`check_dr6d.py`'s printed statistics (all transpose-invariant) are unaffected.
+
 ## 1. The action space and its frame
 
 The checkpoint emits 8 channels: `x, y, z, ax, ay, az, strategy, closure`

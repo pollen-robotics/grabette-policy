@@ -7,7 +7,8 @@ followed by the action tokens themselves.
 
 Mass is a fraction of the PREFIX (cameras plus language), so the numbers sum to
 one and a camera the policy barely uses reads as a small number rather than
-being renormalised into looking important.
+being renormalised into looking important. A camera's mass includes its
+letterbox-padding tokens; `padding_mass` reports that part separately.
 """
 
 from typing import Mapping, Sequence
@@ -66,6 +67,14 @@ def _select(
         wanted_layers = {l for _, l in captures}
     else:
         wanted_layers = set(layers)
+        # Every requested layer must exist: dropping the missing ones would
+        # reduce a different set than the one provenance records.
+        unknown = wanted_layers - {l for _, l in captures}
+        if unknown:
+            raise ValueError(
+                f"layers {sorted(unknown)} were not captured; captured layers "
+                f"are {sorted({l for _, l in captures})}"
+            )
 
     chosen = [
         w for (s, l), w in captures.items()
@@ -132,9 +141,14 @@ def reduce_attention(
         geometry = geometries[key]          # KeyError if a camera was forgotten
         row0, row1 = geometry.content_rows(patch)
         col0, col1 = geometry.content_cols(patch)
+        content = grid[row0:row1, col0:col1]
         cameras[key] = CameraAttention(
-            grid=np.ascontiguousarray(grid[row0:row1, col0:col1], dtype=np.float32),
+            grid=np.ascontiguousarray(content, dtype=np.float32),
+            # `mass` keeps its meaning (the whole block, padding included) so
+            # the camera + language shares still sum to one; the padding part
+            # is reported beside it rather than silently subtracted.
             mass=float(block.sum()) / total,
+            padding_mass=float(block.sum() - content.sum()) / total,
         )
 
     language_mass = float(prefix[layout.language_slice()].sum()) / total

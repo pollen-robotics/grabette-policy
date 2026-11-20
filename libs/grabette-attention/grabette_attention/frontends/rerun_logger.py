@@ -6,7 +6,11 @@ layer free of presentation.
 
 Entity naming follows the repo's existing visualiser
 (`grabette-postprocess/scripts/visualize/visualize_rgbd_trajectory.py` in the grabette-slam repo):
-`camera_feed/<name>` for imagery, `metrics/...` for scalar series.
+`camera_feed/<run>/<name>` for imagery, `metrics/<series>/<run>/<name>` for
+scalar series, where `<run>` is `ep<NNN>/step<tag>`. The timeline is frame
+only, so the episode and denoising step must be in the PATH: otherwise
+episodes sharing a frame index, and the per-step records of
+`--denoise-step all`, overwrite each other at the same (time, entity).
 """
 
 from typing import Any
@@ -15,6 +19,7 @@ import numpy as np
 
 from ..records import FrameAnalysis, FrameObservation
 from . import camera_labels
+from .png import _step_tag
 
 
 def _upsample_and_normalize(grid: np.ndarray, height: int, width: int) -> np.ndarray:
@@ -65,17 +70,20 @@ def log_analysis(
     rr = recording or _rerun()
     rr.set_time("frame", sequence=analysis.frame)
 
+    # Episode and denoising step in the path, so distinct records never share
+    # an entity at the same frame (see module docstring).
+    run = f"ep{analysis.episode:03d}/step{_step_tag(analysis)}"
     labels = camera_labels(analysis.cameras)
     for camera, attention in analysis.cameras.items():
         short = labels[camera]
         frame = obs.images[camera]
-        rr.log(f"camera_feed/{short}", rr.Image(frame))
+        rr.log(f"camera_feed/{run}/{short}", rr.Image(frame))
         overlay = _upsample_and_normalize(attention.grid, frame.shape[0], frame.shape[1])
-        rr.log(f"camera_feed/{short}/attention", rr.Image(overlay))
-        rr.log(f"metrics/mass/{short}", rr.Scalars(attention.mass))
+        rr.log(f"camera_feed/{run}/{short}/attention", rr.Image(overlay))
+        rr.log(f"metrics/mass/{run}/{short}", rr.Scalars(attention.mass))
         ablation = analysis.ablations.get(camera)
         if ablation is not None:
             rr.log(
-                f"metrics/ablation_mm/{short}", rr.Scalars(ablation.delta_mm)
+                f"metrics/ablation_mm/{run}/{short}", rr.Scalars(ablation.delta_mm)
             )
-    rr.log("metrics/mass/language", rr.Scalars(analysis.language_mass))
+    rr.log(f"metrics/mass/{run}/language", rr.Scalars(analysis.language_mass))

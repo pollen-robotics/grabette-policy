@@ -81,6 +81,11 @@ def occlusion_saliency(
     if camera not in obs.images:
         raise KeyError(f"{camera!r} is not one of this frame's cameras "
                        f"{tuple(obs.images)}")
+    if camera not in adapter.camera_keys:
+        # Present in the frame but never read by the policy: every block would
+        # measure 0 mm, an all-zero map indistinguishable from a real result.
+        raise KeyError(f"{camera!r} is not one of the policy's cameras "
+                       f"{tuple(adapter.camera_keys)}")
     if rows < 1 or cols < 1:
         raise ValueError(f"occlusion grid must be at least 1x1, got {rows}x{cols}")
     if metric not in ("rms", "endpoint"):

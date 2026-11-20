@@ -119,6 +119,20 @@ def test_an_unknown_camera_is_rejected():
         occlusion_saliency(FakeAdapter(), observation(), camera="cam9", rows=2, cols=2)
 
 
+def test_a_camera_the_policy_does_not_consume_is_rejected():
+    # The frame carries an extra view the checkpoint never reads. Occluding it
+    # changes nothing, so the sweep would return an all-zero map that reads
+    # like a real "this camera does not matter" result.
+    obs = observation()
+    obs = FrameObservation(
+        episode=obs.episode, frame=obs.frame,
+        images={**obs.images, "extra": obs.images[CAM].copy()},
+        state=obs.state, task=obs.task,
+    )
+    with pytest.raises(KeyError, match="extra"):
+        occlusion_saliency(FakeAdapter(), obs, camera="extra", rows=2, cols=2)
+
+
 def test_a_degenerate_grid_is_rejected():
     with pytest.raises(ValueError, match="at least 1x1"):
         occlusion_saliency(FakeAdapter(), observation(), camera=CAM, rows=0, cols=4)

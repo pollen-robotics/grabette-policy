@@ -29,9 +29,11 @@ _REPRESENTATIONS = (OFFSETS, PER_STEP_DELTAS)
 def _six_d_to_rotation(six: np.ndarray) -> np.ndarray:
     """Zhou et al. 6D rotation representation -> 3x3 matrix.
 
-    The first two columns of R, re-orthonormalised by Gram-Schmidt. Degenerate
-    rows (all-zero actions, which appear as padding at the end of an episode)
-    fall back to the identity rather than producing a singular matrix.
+    The first two ROWS of R, re-orthonormalised by Gram-Schmidt -- the repo's
+    convention (policies/DiffusionPolicy/rotation.py encodes matrix[..., :2, :]).
+    Stacking them as columns would silently return R^T. Degenerate rows
+    (all-zero actions, which appear as padding at the end of an episode) fall
+    back to the identity rather than producing a singular matrix.
     """
     a1 = np.asarray(six[:3], dtype=np.float64)
     a2 = np.asarray(six[3:6], dtype=np.float64)
@@ -44,7 +46,8 @@ def _six_d_to_rotation(six: np.ndarray) -> np.ndarray:
     if n2 < 1e-8:
         return np.eye(3)
     b2 = a2p / n2
-    return np.stack([b1, b2, np.cross(b1, b2)], axis=1)
+    # b1, b2, b3 are the ROWS of R (axis=0), matching the repo encoder.
+    return np.stack([b1, b2, np.cross(b1, b2)], axis=0)
 
 
 def chunk_endpoint_m(

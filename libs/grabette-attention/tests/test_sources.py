@@ -47,6 +47,26 @@ def test_dump_obs_pairs_each_frame_with_its_state(tmp_path):
     assert frames[1].frame == 1
 
 
+def test_a_dump_frame_with_no_state_line_is_a_clear_error(tmp_path):
+    # Frame 2 has a PNG but no state.jsonl line. An empty state would crash
+    # deep in the normalizer (or vanish from the prompt) instead of naming the
+    # missing line.
+    write_dump(tmp_path)
+    lines = (tmp_path / "state.jsonl").read_text().splitlines()[:2]
+    (tmp_path / "state.jsonl").write_text("\n".join(lines) + "\n")
+    source = DumpObsSource(tmp_path, task="t", camera_key="cam0")
+    with pytest.raises(ValueError, match="state"):
+        list(source.frames())
+
+
+def test_a_dump_without_state_jsonl_is_a_clear_error(tmp_path):
+    write_dump(tmp_path)
+    (tmp_path / "state.jsonl").unlink()
+    source = DumpObsSource(tmp_path, task="t", camera_key="cam0")
+    with pytest.raises(ValueError, match="state"):
+        list(source.frames())
+
+
 def test_grasp_selection_finds_the_first_closure_crossing():
     gripper = np.array([0.0, 0.0, 0.1, 0.6, 0.9, 0.9, 0.2], np.float32)
     indices, note = select_frames(gripper, n_frames=7, mode="grasp")
@@ -99,35 +119,90 @@ def test_stride_note_reports_actual_count_not_requested():
 
 
 class _FakeLeRobotDataset:
-    """One camera, one frame; item["task"] is set (or omitted) per test.
+    """One camera, `n` frames; item["task"] is set (or omitted) per test.
 
     Mirrors the one real fact this exercises: `dataset[idx]["task"]` already
     carries the episode's own task string (`DatasetReader.get_item` sets it
     from `meta.tasks`). `DatasetSource` must prefer an explicitly supplied
     `task` over it, and fall back to it only when no `task` was supplied.
+
+    `actions` / `action_names` model the parquet action column
+    (`hf_dataset["action"]`) and `meta/info.json`'s channel names. `getitem_calls`
+    counts full item reads, each of which decodes video in the real dataset.
     """
 
-    def __init__(self, item_task, repo_id="user/d", root=None, episodes=None):
+    def __init__(self, item_task, repo_id="user/d", root=None, episodes=None,
+                 actions=None, action_names=None):
         self._item_task = item_task
+        self._actions = (
+            np.zeros((1, 3), np.float32) if actions is None
+            else np.asarray(actions, np.float32)
+        )
+        action = {"dtype": "float32", "shape": [self._actions.shape[1]]}
+        if action_names is not None:
+            action["names"] = list(action_names)
+        self.features = {"action": action}
+        self.hf_dataset = {"action": [row for row in self._actions]}
+        self.getitem_calls = 0
 
     def __len__(self):
-        return 1
+        return len(self._actions)
 
     def __getitem__(self, idx):
+        self.getitem_calls += 1
         item = {
             "cam0": np.zeros((3, 4, 4), np.float32),
             "observation.state": np.zeros(2, np.float32),
-            "action": np.zeros(3, np.float32),
+            "action": self._actions[idx],
         }
         if self._item_task is not None:
             item["task"] = self._item_task
         return item
 
 
-def _install_fake_lerobot_dataset(monkeypatch, item_task):
+def _install_fake_lerobot_dataset(monkeypatch, item_task, **kwargs):
+    made = []
+
+    def factory(*a, **k):
+        made.append(_FakeLeRobotDataset(item_task, *a, **k, **kwargs))
+        return made[-1]
+
     module = types.ModuleType("lerobot.datasets.lerobot_dataset")
-    module.LeRobotDataset = lambda *a, **k: _FakeLeRobotDataset(item_task, *a, **k)
+    module.LeRobotDataset = factory
     monkeypatch.setitem(sys.modules, "lerobot.datasets.lerobot_dataset", module)
+    return made
+
+
+# A 6-frame episode whose gripper closes at frame 4 on the last channel.
+_CLOSING = [[0, 0, 0.0], [0, 0, 0.0], [0, 0, 0.1], [0, 0, 0.2], [0, 0, 0.9], [0, 0, 0.9]]
+
+
+def test_grasp_selection_reads_the_action_column_without_decoding_every_frame(monkeypatch):
+    made = _install_fake_lerobot_dataset(
+        monkeypatch, item_task="t", actions=_CLOSING,
+        action_names=["x", "strategy", "closure"],
+    )
+    source = DatasetSource("user/d", episodes=[0], camera_keys=["cam0"], task=None)
+    frames = list(source.frames())
+    assert [f.frame for f in frames] == [4]
+    assert "closure at frame 4" in source.notes[0]
+    # Only the ONE selected frame is read in full; the track came from the
+    # action column, not from len(dataset) video decodes.
+    assert made[0].getitem_calls == 1
+
+
+def test_a_raw_angle_dataset_is_not_read_as_closure(monkeypatch):
+    # Raw 8D/11D datasets end in the distal finger ANGLE, not a [0, 1]
+    # closure. Thresholding it at 0.5 picks an arbitrary frame; fall back to
+    # a stride and say why instead.
+    _install_fake_lerobot_dataset(
+        monkeypatch, item_task="t", actions=_CLOSING,
+        action_names=["x", "proximal", "distal"],
+    )
+    source = DatasetSource("user/d", episodes=[0], camera_keys=["cam0"], task=None)
+    list(source.frames())
+    assert source.notes[0].startswith("no closure channel")
+    assert "distal" in source.notes[0] and "stride" in source.notes[0]
 
 
 def test_an_explicitly_supplied_task_overrides_the_datasets_own(monkeypatch):

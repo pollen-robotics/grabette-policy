@@ -338,7 +338,12 @@ both.
 One important implementation detail for the ablation: for pi0.5 the cleanest
 intervention is **dropping that camera's image tokens via the attention mask**,
 not occluding its pixels. pi0/pi0.5 are trained with missing-camera masking, so
-a dropped view is *in distribution* while a grey rectangle is not. No paper
+a dropped view is *in distribution* while a grey rectangle is not.
+[Correction, 2026-11-04: only partly true. Stock lerobot masks a camera only
+when it is absent from the batch, so a single-camera checkpoint never sees a
+masked view in training, and masking shifts later tokens' position ids
+(`cumsum(pad_masks) - 1`). Treat the ablation as a "no image"
+counterfactual.] No paper
 found formalises this as an attribution score, which makes it both the cheapest
 and the most defensible per-view measure available to us.
 

@@ -90,8 +90,11 @@ actions, so this needs a local checkpoint.
   No `lerobot` modification: `sample_actions` forces eager attention and the
   attention module returns its probabilities.
 - A view is removed by zeroing its image mask in place, not by dropping the
-  batch key. Dropping the key would reorder tokens; and pi0.5 trains with
-  missing-camera masking, so a masked view is in distribution.
+  batch key. Dropping the key would reorder the camera blocks. Masking still
+  shifts the position ids of every later token (pi0.5 uses
+  `cumsum(pad_masks) - 1`), and a checkpoint trained with one always-present
+  camera has never seen a masked view, so the ablation is a "no image"
+  counterfactual, not an in-distribution one.
 - The baseline and every ablation for a frame share one noise tensor, so a delta
   means the camera mattered rather than the sampler drew differently.
 - Tokens per image, grid shape, camera order and the pixel mapping are derived

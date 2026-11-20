@@ -6,8 +6,9 @@ a shadow. But the dataset knows exactly where the gripper is going, and the
 camera is calibrated, so the answer can be computed.
 
   1. The 11-dim action gives, per step, a delta translation d_k in the camera
-     frame at step k and a delta rotation R_k (Zhou 6D, verified: mean dr6d is
-     the identity's first two columns, median per-step rotation 0.73 deg).
+     frame at step k and a delta rotation R_k (Zhou 6D, first two ROWS of R
+     per the repo encoder; mean dr6d is the identity's, median per-step
+     rotation 0.73 deg).
   2. Chain them to put the grasp-time camera position into the CURRENT camera
      frame:  p = d_t + R_t d_(t+1) + R_t R_(t+1) d_(t+2) + ...
   3. Project p through the calibrated fisheye model, rescaled from the
@@ -50,7 +51,11 @@ ROWS, COLS = 12, 16
 
 
 def six_d_to_matrix(six):
-    """Zhou et al. 6D -> rotation matrix, falling back to identity."""
+    """Zhou et al. 6D (first two ROWS of R) -> rotation matrix, identity fallback.
+
+    Decoded as rows since 2026-11-04; earlier runs stacked columns and so
+    composed R^T (see findings.md, "6D decode correction").
+    """
     a1, a2 = np.asarray(six[:3], float), np.asarray(six[3:], float)
     n1 = np.linalg.norm(a1)
     if n1 < 1e-8:
@@ -61,7 +66,8 @@ def six_d_to_matrix(six):
     if n2 < 1e-8:
         return np.eye(3)
     b2 = a2p / n2
-    return np.stack([b1, b2, np.cross(b1, b2)], axis=1)
+    # Rows, not columns: the repo encodes matrix[..., :2, :].
+    return np.stack([b1, b2, np.cross(b1, b2)], axis=0)
 
 
 def load_camera(width, height):

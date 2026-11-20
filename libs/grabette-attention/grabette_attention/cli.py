@@ -41,7 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--frames",
-        nargs="*",
+        # "+", not "*": a bare --frames must be an error, not an empty
+        # selection that silently analyses nothing.
+        nargs="+",
         default="grasp",
         help="'grasp' (default), 'stride', or explicit frame indices",
     )

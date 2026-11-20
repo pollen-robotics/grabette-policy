@@ -1,14 +1,21 @@
-"""Are the dr6d channels the first two columns of a rotation matrix?
+"""Are the dr6d channels the 6D representation of a rotation matrix?
 
 The 11-dim action is dx,dy,dz + dr6d_0..5 + strategy + closure. To chain
 per-step deltas into "where is the grasp point from here", the rotations have
 to be composed, which means knowing what those 6 numbers are.
 
-If they are the Zhou et al. 6D representation -- the first two COLUMNS of R,
-recovered by Gram-Schmidt -- then for small per-step rotations they must sit
-near the identity's first two columns, i.e. mean dr6d ~= [1,0,0, 0,1,0].
-Anything else (axis-angle triples, quaternion parts, absolute rather than
-delta rotations) will look obviously different.
+If they are the Zhou et al. 6D representation -- in this repo the first two
+ROWS of R (policies/DiffusionPolicy/rotation.py), recovered by Gram-Schmidt --
+then for small per-step rotations they must sit near the identity's first two
+rows, i.e. mean dr6d ~= [1,0,0, 0,1,0]. Anything else (axis-angle triples,
+quaternion parts, absolute rather than delta rotations) will look obviously
+different.
+
+Note: the identity is symmetric, and orthonormality, det and rotation angle
+are all invariant under transpose, so NOTHING printed here can tell rows from
+columns. An earlier version of this script (and of metrics.py) decoded as
+columns, i.e. returned R^T; that did not change this script's output but did
+corrupt composed endpoints (2026-11-04, see findings.md).
 
 Also checks that the recovered matrices are actually orthonormal and that
 per-step rotation angles are small, since a 50 fps trajectory should not jump.
@@ -30,7 +37,8 @@ def six_d_to_matrix(six):
     a2p = a2 - np.dot(b1, a2) * b1
     b2 = a2p / max(np.linalg.norm(a2p), 1e-12)
     b3 = np.cross(b1, b2)
-    return np.stack([b1, b2, b3], axis=1)
+    # Rows, not columns: the repo encodes matrix[..., :2, :].
+    return np.stack([b1, b2, b3], axis=0)
 
 
 def main() -> None:
@@ -43,7 +51,7 @@ def main() -> None:
     print(f"episode 0: {len(rows)} frames, action dim {act.shape[1]}\n")
     print("mean dr6d over the episode:")
     print("  ", np.array2string(six.mean(axis=0), precision=4))
-    print("identity's first two columns would be [1 0 0 0 1 0]")
+    print("identity's first two rows would be [1 0 0 0 1 0]")
     print("std  dr6d:")
     print("  ", np.array2string(six.std(axis=0), precision=4))
 

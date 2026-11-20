@@ -57,3 +57,15 @@ def test_padding_rows_are_excluded_from_the_content_rows():
 def test_an_unpadded_frame_keeps_every_row():
     g = LetterboxGeometry.from_shapes(src_hw=(480, 480), dst_hw=(224, 224))
     assert g.content_rows(patch=14) == (0, 16)
+
+
+@pytest.mark.parametrize("src_hw", [(720, 1280), (1080, 1920), (1280, 720)])
+def test_padding_that_splits_a_patch_is_refused(src_hw):
+    # 16:9 into 224 pads 49 px = 3.5 patches. The half-padded row would be
+    # kept, and the overlay (stretched over the whole frame) and the occlusion
+    # grid (equal blocks of the source) would then both be misaligned with the
+    # attention cells by up to half a cell. Refuse rather than plot that.
+    g = LetterboxGeometry.from_shapes(src_hw=src_hw, dst_hw=(224, 224))
+    with pytest.raises(ValueError, match="patch"):
+        g.content_rows(patch=14)
+        g.content_cols(patch=14)

@@ -58,13 +58,29 @@ class LetterboxGeometry:
         """Letterboxed pixel (u across, v down) -> source pixel (x, y)."""
         return ((u - self.pad_left) * self.ratio, (v - self.pad_top) * self.ratio)
 
+    def _require_patch_aligned(self, before: int, after: int, patch: int) -> None:
+        # Downstream, the cropped grid is stretched over the whole source frame
+        # (frontends/png.py) and the occlusion grid splits the source into
+        # equal blocks (occlusion.py). Both are exact only when every kept
+        # patch is pure content, i.e. the padding is a whole number of patches
+        # (true for 4:3 into 224 at patch 14). A partly padded row would be
+        # misplaced by up to half a cell, so refuse it instead of plotting it.
+        if before % patch or after % patch:
+            raise ValueError(
+                f"letterbox padding ({before}, {after}) px is not a multiple of "
+                f"the {patch}-px patch for a {self.src_w}x{self.src_h} frame; "
+                "partly padded patch rows/columns are not supported (overlay "
+                "and occlusion grids would be misaligned). Use a frame whose "
+                "aspect ratio letterboxes onto whole patches, e.g. 4:3."
+            )
+
     def content_rows(self, patch: int) -> tuple[int, int]:
         """Half-open range of grid rows that carry image content.
 
-        A row that is only partly padded is KEPT, which is the conservative
-        choice: we would rather show a slightly-too-tall map than silently drop
-        real content.
+        Raises ValueError if the padding does not fall on whole patches; see
+        `_require_patch_aligned`.
         """
+        self._require_patch_aligned(self.pad_top, self.pad_bottom, patch)
         first = self.pad_top // patch
         content_end = self.dst_h - self.pad_bottom
         last = -(-content_end // patch)  # ceiling division
@@ -72,6 +88,7 @@ class LetterboxGeometry:
 
     def content_cols(self, patch: int) -> tuple[int, int]:
         """Half-open range of grid columns that carry image content."""
+        self._require_patch_aligned(self.pad_left, self.pad_right, patch)
         first = self.pad_left // patch
         content_end = self.dst_w - self.pad_right
         last = -(-content_end // patch)
