@@ -72,9 +72,23 @@ for seed in (0, 1):
         print(f"seed {seed}: ERROR — {type(e).__name__}: {str(e)[:250]}")
 
 if all(o is not None for o in outs):
+    # Same verdict rule as smoke_generation.py: pi05 is stochastic, so the
+    # difference must clear the re-sampling noise of an IDENTICAL input.
+    from smoke_generation import input_dependence_verdict
+
     diff = float(np.abs(np.asarray(outs[0]) - np.asarray(outs[1])).mean())
-    print(f"\nmean |a(seed0)-a(seed1)| = {diff:.6f}")
+    g = torch.Generator().manual_seed(0)          # rebuild the seed-0 input
+    batch = {"task": "pick up the black bowl and place it on the plate"}
+    for k in cams:
+        batch[k] = torch.rand(1, 3, 224, 224, generator=g).to(device)
+    batch["observation.state"] = (torch.rand(1, 8, generator=g) * 2 - 1).to(device)
+    policy.reset()
+    with torch.no_grad():
+        again = post(policy.select_action(pre(batch))).squeeze(0).float().cpu().numpy()
+    floor = float(np.abs(np.asarray(outs[0]) - again).mean())
+    print(f"\nmean |a(seed0)-a(seed1)| = {diff:.6f}   noise floor (seed0 re-sampled) = {floor:.6f}")
     print("VERDICT: " + ("PASS — sane, input-dependent flow generation on the pinned rev"
-                         if diff > 1e-6 else "SUSPICIOUS — input-independent"))
+                         if input_dependence_verdict(diff, floor) == "PASS"
+                         else "SUSPICIOUS — input-independent (within sampling noise)"))
 else:
     print("\nVERDICT: FAIL — pi05 inference path broken in this environment")

@@ -103,7 +103,7 @@ def pose_8d_to_11d(data_8d: np.ndarray) -> np.ndarray:
 
 def smooth_poses_11d(poses_11d: np.ndarray, episode_indices: np.ndarray,
                      window: int, polyorder: int = 3,
-                     jump_cap_m: float = 0.08) -> np.ndarray:
+                     jump_cap_m: float = 0.08, jump_cap_deg: float = 5.0) -> np.ndarray:
     """Savitzky-Golay-smooth the absolute poses BEFORE differencing.
 
     Why: per-step deltas are numerical derivatives of SLAM poses at 50 fps —
@@ -120,10 +120,13 @@ def smooth_poses_11d(poses_11d: np.ndarray, episode_indices: np.ndarray,
         a 150 ms window). Gripper dims (9,10) are NOT smoothed — the close is a
         clean step command and softening it would teach a hesitant close.
       * smoothing runs per contiguous CLEAN segment: segments are split at
-        episode boundaries and at raw per-step jumps > jump_cap_m (SLAM
-        re-acquisition steps). Smoothing across a jump would smear it into a
-        fast ramp that sneaks under the despike cap — splitting keeps the jump
-        as a single delta that the existing despike then zeroes.
+        episode boundaries, at raw per-step jumps > jump_cap_m (SLAM
+        re-acquisition steps) and at raw per-step rotations > jump_cap_deg
+        (orientation glitches). Smoothing across a jump would smear it into a
+        fast ramp that sneaks under the despike cap — a one-frame 20° glitch
+        became 8 deltas of up to 3°, all under the 5° cap — so splitting keeps
+        the jump as a single delta that the existing despike then zeroes. Pass
+        the despike thresholds here (main() does).
       * segments shorter than the window are left unsmoothed.
     """
     from scipy.signal import savgol_filter
@@ -132,12 +135,17 @@ def smooth_poses_11d(poses_11d: np.ndarray, episode_indices: np.ndarray,
     out = poses_11d.copy()
     pos = poses_11d[:, :3].astype(np.float64)
     step = np.linalg.norm(np.diff(pos, axis=0), axis=1)
+    R_all = rotation_6d_to_rotation_matrix_numpy(poses_11d[:, 3:9])
+    # Per-step rotation angle |R_t^T R_{t+1}| from the trace.
+    tr = np.einsum("nji,nji->n", R_all[:-1], R_all[1:])
+    step_deg = np.degrees(np.arccos(np.clip((tr - 1.0) / 2.0, -1.0, 1.0)))
     n = len(poses_11d)
 
-    # Segment breaks: episode changes and re-acquisition jumps.
+    # Segment breaks: episode changes, re-acquisition jumps, rotation glitches.
     breaks = {0, n}
     breaks.update((np.where(episode_indices[1:] != episode_indices[:-1])[0] + 1).tolist())
     breaks.update((np.where(step > jump_cap_m)[0] + 1).tolist())
+    breaks.update((np.where(step_deg > jump_cap_deg)[0] + 1).tolist())
     bounds = sorted(breaks)
 
     n_smoothed = 0
@@ -218,6 +226,28 @@ def compute_delta_actions(poses_11d: np.ndarray, episode_indices: np.ndarray) ->
     actions[:, 9:] = poses_11d[:, 9:]
 
     return actions
+
+
+def integrate_delta_poses(delta_actions: np.ndarray, poses_11d: np.ndarray,
+                          episode_indices: np.ndarray) -> np.ndarray:
+    """Rebuild absolute poses from (despiked) camera-local deltas.
+
+    Inverse of `compute_delta_actions`, starting each episode from its first
+    recorded pose: pos[t+1] = pos[t] + R[t] @ dpos[t], R[t+1] = R[t] @ R_delta[t].
+    Used for the relative state: a relocalization jump that despike turned
+    into a hold is then absent from the state too, instead of offsetting it
+    for the rest of the episode. Gripper columns are copied unchanged.
+    """
+    out = poses_11d.copy()
+    R_delta = rotation_6d_to_rotation_matrix_numpy(delta_actions[:, 3:9])
+    for i in range(1, len(poses_11d)):
+        if episode_indices[i] != episode_indices[i - 1]:
+            continue  # episode start: keep the recorded pose
+        R_prev = rotation_6d_to_rotation_matrix_numpy(out[i - 1, 3:9].reshape(1, 6))[0]
+        out[i, :3] = out[i - 1, :3] + R_prev @ delta_actions[i - 1, :3]
+        out[i, 3:9] = rotation_matrix_to_rotation_6d_numpy(
+            (R_prev @ R_delta[i - 1]).reshape(1, 3, 3))[0]
+    return out
 
 
 def compute_relative_to_start_state(poses_11d: np.ndarray, episode_indices: np.ndarray) -> np.ndarray:
@@ -467,7 +497,11 @@ def main():
 
         # Optional pose smoothing before differencing (see smooth_poses_11d).
         if args.smooth_poses > 0:
-            poses_11d = smooth_poses_11d(poses_11d, episode_indices, args.smooth_poses)
+            # Segment at the despike thresholds, so every glitch the despike
+            # would catch stays a single, catchable delta after smoothing.
+            poses_11d = smooth_poses_11d(poses_11d, episode_indices, args.smooth_poses,
+                                         jump_cap_m=args.despike_max_mm / 1000.0,
+                                         jump_cap_deg=args.despike_max_deg)
 
         # Compute delta actions
         delta_actions = compute_delta_actions(poses_11d, episode_indices)
@@ -501,7 +535,13 @@ def main():
 
         # Compute observation state
         if use_relative:
-            obs_state = compute_relative_to_start_state(poses_11d, episode_indices)
+            # From the DESPIKED deltas, not the raw poses: otherwise a held
+            # relocalization jump still offsets the state for the rest of the
+            # episode. Equal to the raw poses (up to float rounding) when
+            # nothing was despiked.
+            obs_state = compute_relative_to_start_state(
+                integrate_delta_poses(delta_actions, poses_11d, episode_indices),
+                episode_indices)
             logger.info(f"  {pf.name}: computed relative-to-start state (11D)")
         else:
             obs_state = poses_11d[:, 9:]  # gripper only (2D)

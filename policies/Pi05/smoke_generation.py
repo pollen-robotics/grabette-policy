@@ -101,11 +101,25 @@ def report_execution_quality(pred, gt_rel, n_exec, differenced=True):
           "noise rather than motion)")
 
     if n_exec < len(pred):
-        de = np.diff(pred[:n_exec, :3], axis=0)
+        # Same rule as above: only offsets are differenced; per-step deltas
+        # already ARE the executed motion.
+        de = np.diff(pred[:n_exec, :3], axis=0) if differenced else pred[:n_exec, :3]
         print(f"   over the {n_exec} actions --n_action_steps would execute: "
               f"net {np.linalg.norm(de.sum(axis=0)) * 1000:.1f} mm of "
               f"{np.abs(de).sum() * 1000:.1f} mm travelled")
     return {"step_err_mm": float(err.mean()), "snr": float(snr)}
+
+
+def input_dependence_verdict(diff, floor, ratio=1.5):
+    """PASS only if the between-episode difference clears the SAME-input
+    re-sampling noise floor, not merely zero.
+
+    pi05 is a flow model: two draws on identical input already differ by
+    ~3e-3, so `diff > 1e-6` passed a policy collapsed to input-independent
+    output. `ratio` matches the --task2 probe's FAIL threshold. The 1e-6 term
+    keeps the old behaviour for a deterministic decoder (floor == 0).
+    """
+    return "PASS" if diff > max(1e-6, ratio * floor) else "SUSPICIOUS"
 
 
 def report_gripper_schedule(pred, gt_rel, n_exec):
@@ -377,12 +391,21 @@ def main():
         diff = float(np.mean(pairs))
         print(f"mean pairwise |a(ep_i) - a(ep_j)| over {len(pairs)} pair(s) "
               f"= {diff:.6f}")
-        if diff > 1e-6:
+        # Noise floor: re-sample the FIRST episode's identical input.
+        try:
+            scene_floor = float(np.abs(np.asarray(outs[0])
+                                       - np.asarray(comparable(predict(dict(first_batch))))).mean())
+        except Exception as e:
+            print(f"noise floor: ERROR — {type(e).__name__}: {str(e)[:200]}")
+            scene_floor = float("inf")   # cannot show input-dependence -> not PASS
+        print(f"same input re-sampled (noise floor)            = {scene_floor:.6f}")
+        if input_dependence_verdict(diff, scene_floor) == "PASS":
             print("VERDICT: PASS — well-formed, input-dependent generation. "
                   "Worth a robot session (open-loop only; run the DiffusionPolicy "
                   "gates offline_eval/ood_check for the rest).")
         else:
-            print("VERDICT: SUSPICIOUS — well-formed but input-INDEPENDENT; "
+            print("VERDICT: SUSPICIOUS — well-formed but input-INDEPENDENT "
+                  "(episode differences within re-sampling noise); "
                   "the model may be ignoring observations.")
 
         if args.task2:

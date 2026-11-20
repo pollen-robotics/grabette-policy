@@ -188,8 +188,23 @@ def _fresh_pipeline(policy_cfg, pretrained_path=None, pretrained_revision=None, 
     # to the deserialization path; the fresh build takes everything it needs
     # (normalization stats, tokenizer names, device) from policy_cfg +
     # dataset_stats.
-    kwargs.pop("preprocessor_overrides", None)
+    pre_overrides = kwargs.pop("preprocessor_overrides", None) or {}
     kwargs.pop("postprocessor_overrides", None)
+    # On --resume=true, lerobot (pinned e40b58a8, lerobot_train.py:318) omits
+    # `dataset_stats` and passes the stats ONLY inside the normalizer override.
+    # Dropping the overrides then builds a normalizer with NO stats, which
+    # passes data through unchanged: the resumed run trains unnormalized and
+    # ships an identity (un)normalizer. Recover them from the override.
+    if kwargs.get("dataset_stats") is None:
+        kwargs["dataset_stats"] = (pre_overrides.get("normalizer_processor") or {}).get("stats")
+    if kwargs.get("dataset_stats") is None:
+        # lerobot 0.6.1+ forwards no stats at all on resume (it trusts the
+        # checkpoint's serialized processor, which this launcher bypasses).
+        raise RuntimeError(
+            "no normalization stats reached the processor factory (neither "
+            "dataset_stats nor preprocessor_overrides['normalizer_processor']"
+            "['stats']); refusing to build an identity normalizer. This lerobot "
+            "revision does not forward stats on --resume=true.")
     _check_stats_match_representation(policy_cfg, kwargs.get("dataset_stats"))
     pre, post = _original(policy_cfg, pretrained_path=None, pretrained_revision=None, **kwargs)
     if _CHUNK_RELATIVE:
@@ -374,6 +389,31 @@ class BestCheckpointKeeper:
         self.best_dir: Path | None = None
         self._prunable: Path | None = None
         self._warned = False
+        self._seeded = False
+
+    def seed_from(self, checkpoints_root: Path) -> None:
+        """Pick up the best recorded BEFORE a --resume=true restart.
+
+        Without this the tracker restarts at inf, so the first post-resume
+        eval is always "best" and is pushed over a better pre-resume
+        <repo>_best on the Hub. The pre-resume best is the directory holding
+        the lowest `grabette_best.json` (lerobot's `last` symlink is skipped:
+        best_dir must be the real path, or a later prune could hit it).
+        """
+        self._seeded = True
+        for rec in sorted(Path(checkpoints_root).glob("*/grabette_best.json")):
+            if rec.parent.is_symlink():
+                continue
+            try:
+                d = json.loads(rec.read_text())
+                step, loss = int(d["step"]), float(d["eval_loss"])
+            except (OSError, ValueError, KeyError):
+                continue
+            if loss < self.best_loss:
+                self.best_loss, self.best_step, self.best_dir = loss, step, rec.parent
+        if self.best_dir is not None:
+            logger.info("[best] resumed tracker: step %d (eval_loss=%.4f)",
+                        self.best_step, self.best_loss)
 
     def offer(self, checkpoint_dir: Path, step: int, loss: float | None,
               final_step: int | None) -> None:
@@ -528,6 +568,10 @@ def _save_checkpoint(*args, **kwargs):
     cfg = kwargs.get("cfg", args[2] if len(args) > 2 else None)
     if ckpt_dir is None or step is None:
         return
+    if not _KEEPER._seeded:
+        # First save of this process: on --resume=true the sibling checkpoint
+        # dirs carry the pre-resume best (a fresh run has none, so no-op).
+        _KEEPER.seed_from(Path(str(ckpt_dir)).parent)
     loss = _EVAL_STATE["loss"] if _EVAL_STATE["step"] == step else None
     if loss is not None and loss < _KEEPER.best_loss:
         # Upload NOW rather than at the end of training. The checkpoint has just
@@ -559,22 +603,46 @@ def _rewrite_last_push_target(argv):
     The best is uploaded separately to <repo_id>_best. Neither lands on the bare
     id, so a run can never silently replace a good checkpoint with a worse one —
     which is what shipped on 2026-09-04.
+
+    Returns (argv, base repo id). The base id is None when nothing may be
+    pushed (no repo id, or --policy.push_to_hub=false): it gates the _best
+    upload too, which otherwise ignored push_to_hub=false.
     """
-    repo, steps = None, None
-    for a in argv:
-        if a.startswith("--policy.repo_id="):
-            repo = a.split("=", 1)[1]
-        elif a.startswith("--steps="):
-            steps = a.split("=", 1)[1]
-    if not (repo and steps) or repo.endswith(f"_step{steps}"):
+    def value(flag):
+        # draccus accepts both `--flag=value` and `--flag value`.
+        for i, a in enumerate(argv):
+            if a.startswith(flag + "="):
+                return i, a.split("=", 1)[1]
+            if a == flag and i + 1 < len(argv):
+                return i, argv[i + 1]
+        return None, None
+
+    i_repo, repo = value("--policy.repo_id")
+    _, steps = value("--steps")
+    _, push = value("--policy.push_to_hub")
+    if push is not None and push.lower() in ("false", "0", "no"):
+        return argv, None
+    if not repo:
+        return argv, repo
+    if steps is None:
+        # Not on the command line: lerobot runs its own default, so name the
+        # push after that rather than letting it land on the bare id.
+        from lerobot.configs.train import TrainPipelineConfig
+        steps = next(f.default for f in dataclasses.fields(TrainPipelineConfig)
+                     if f.name == "steps")
+    if repo.endswith(f"_step{steps}"):
         return argv, repo
     target = f"{repo}_step{steps}"
     # print, not logging: this runs before lerobot's main() configures logging,
     # so a logging call here goes nowhere and the rewrite looks like it never
     # happened. Observed on the first run with these patches.
     print(f"[checkpoints] last -> {target}, best -> {repo}_best", flush=True)
-    return [f"--policy.repo_id={target}" if a.startswith("--policy.repo_id=") else a
-            for a in argv], repo
+    new = list(argv)
+    if new[i_repo] == "--policy.repo_id":
+        new[i_repo + 1] = target
+    else:
+        new[i_repo] = f"--policy.repo_id={target}"
+    return new, repo
 
 
 _orig_init_logging = lerobot_train.init_logging

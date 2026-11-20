@@ -53,7 +53,10 @@ class FeatureExtractor:
         self.encoder = policy.diffusion.rgb_encoder
         self.pre = pre
         self.device = device
-        self.mid_state = torch.zeros(1, 2)  # state doesn't affect image features
+        # State doesn't affect image features, but the preprocessor normalizes
+        # it against the checkpoint's stats, so it must have the trained width
+        # (2D gripper, or 11D with --proprioception relative).
+        self.mid_state = torch.zeros(1, policy.config.robot_state_feature.shape[0])
 
     @torch.no_grad()
     def __call__(self, images: list[torch.Tensor]) -> np.ndarray:
@@ -179,6 +182,9 @@ def main():
     p.add_argument("--val_split", choices=["stride", "tail"], default="stride",
                    help="Fallback split rule when the checkpoint has no val_episodes.json "
                         "('tail' for checkpoints trained before the strided split).")
+    p.add_argument("--exclude_episodes", type=int, nargs="+", default=None,
+                   help="train.py's --exclude_episodes: dropped from the TRAINING fit "
+                        "set and from the fallback val split, as in training.")
     p.add_argument("--fit_stride", type=int, default=8, help="Fit on every Nth training frame")
     p.add_argument("--device", default="cuda")
     args = p.parse_args()
@@ -205,9 +211,11 @@ def main():
             f"machine, push it to the Hub from there, or run this check on that machine\n"
             f"with --dataset_root."
         )
+    excl = set(args.exclude_episodes or ())
     val_eps = val_episodes_from_checkpoint(args.checkpoint) \
-        or val_episodes_like_train(meta.total_episodes, args.val_ratio, args.val_split)
-    train_eps = [e for e in range(meta.total_episodes) if e not in val_eps]
+        or val_episodes_like_train(meta.total_episodes, args.val_ratio, args.val_split,
+                                   args.exclude_episodes)
+    train_eps = [e for e in range(meta.total_episodes) if e not in val_eps and e not in excl]
 
     print(f"Fitting on {len(train_eps)} training episodes (stride {args.fit_stride})...")
     ds_train = LeRobotDataset(args.dataset_repo_id, root=args.dataset_root, episodes=train_eps)
@@ -254,10 +262,12 @@ def main():
         #     entirely INSIDE the dataset range and still be extreme-tail OOD,
         #     e.g. the robot's "open" reading below 96% of training frames) ---
         if states is not None:
-            print("\nSTATE PARITY (observation.state = [proximal, distal])")
+            print("\nSTATE PARITY (observation.state gripper = [proximal, distal])")
             print(f"  {'':<10} {'p5':>16} {'p50':>16} {'p95':>16}   (dataset / deployment)")
             suspect = False
-            for j, name in enumerate(["proximal", "distal"]):
+            # The gripper is the LAST two state columns in both layouts (2D, and
+            # 11D relative where columns 0..8 are the pose).
+            for j, name in zip((-2, -1), ["proximal", "distal"]):
                 cells = [f"{np.percentile(fit_states[:, j], p):7.3f}/{np.percentile(states[:, j], p):7.3f}"
                          for p in (5, 50, 95)]
                 print(f"  {name:<10} {cells[0]:>16} {cells[1]:>16} {cells[2]:>16}")

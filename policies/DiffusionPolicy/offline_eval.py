@@ -50,31 +50,45 @@ def load_policy(checkpoint: str):
     return get_policy_class(policy_type).from_pretrained(checkpoint)
 
 
-def val_episodes_like_train(total: int, val_ratio: float, mode: str = "stride") -> list[int]:
+def val_episodes_like_train(total: int, val_ratio: float, mode: str = "stride",
+                            exclude: list[int] | None = None) -> list[int]:
     """Reproduce train.py's deterministic split.
 
     mode="stride" (current train.py): every Nth episode — val spread across the
     whole recording session, avoiding the correlated-consecutive-episodes trap.
     mode="tail" (legacy): the LAST max(1, ratio*N) episodes — for checkpoints
     trained before the strided split.
+
+    `exclude` must be train.py's --exclude_episodes: train.py drops those
+    BEFORE striding, so ignoring them shifts the split onto training episodes.
     """
+    excl = set(exclude or ())
+    eps = [e for e in range(total) if e not in excl]
     if mode == "tail":
-        num_val = max(1, int(total * val_ratio))
-        return list(range(total - num_val, total))
+        num_val = max(1, int(len(eps) * val_ratio))
+        return eps[len(eps) - num_val:]
     stride = max(2, round(1 / val_ratio))
-    return list(range(0, total, stride))
+    return eps[::stride]
 
 
 def val_episodes_from_checkpoint(checkpoint: str) -> list[int] | None:
     """The authoritative split: train.py saves val_episodes.json next to its
-    checkpoints. If the checkpoint is local, read it (checking the dir and its
-    parent, since --checkpoint may point at <output_dir>/best). Returns None for
-    Hub checkpoints / older runs — caller falls back to the deterministic rule."""
+    checkpoints and pushes it with them. If the checkpoint is local, read it
+    (checking the dir and its parent, since --checkpoint may point at
+    <output_dir>/best); otherwise fetch it from the Hub repo. Returns None for
+    older runs without one — caller falls back to the deterministic rule."""
     ckpt = Path(checkpoint)
     for candidate in (ckpt / "val_episodes.json", ckpt.parent / "val_episodes.json"):
         if candidate.is_file():
             return json.loads(candidate.read_text())["val_episodes"]
-    return None
+    if ckpt.is_dir():
+        return None
+    try:
+        from huggingface_hub import hf_hub_download
+        return json.loads(Path(hf_hub_download(checkpoint, "val_episodes.json"))
+                          .read_text())["val_episodes"]
+    except Exception:  # noqa: BLE001 - older checkpoint / offline: use the rule
+        return None
 
 
 def integrate_deltas(deltas: np.ndarray) -> np.ndarray:
@@ -108,7 +122,9 @@ def gripper_lag(pred: np.ndarray, gt: np.ndarray, max_lag: int = 60) -> tuple[in
     g = gt - gt.mean()
     denom = np.sqrt((p ** 2).sum() * (g ** 2).sum()) + 1e-9
     lags = range(-max_lag, max_lag + 1)
-    xc = [np.sum(p[max(0, -l):len(p) - max(0, l)] * g[max(0, l):len(g) - max(0, -l)]) / denom
+    # At lag l, pair pred[t + l] with gt[t]: the peak is where the prediction
+    # reproduces GT l steps LATER, so l > 0 = late (as documented above).
+    xc = [np.sum(p[max(0, l):len(p) - max(0, -l)] * g[max(0, -l):len(g) - max(0, l)]) / denom
           for l in lags]
     best = int(np.argmax(xc))
     corr0 = float(np.sum(p * g) / denom)
@@ -214,6 +230,9 @@ def main():
                    help="Split rule fallback when the checkpoint has no val_episodes.json: "
                         "'stride' = current train.py (every Nth episode); 'tail' = legacy "
                         "(last N) for checkpoints trained before the strided split.")
+    p.add_argument("--exclude_episodes", type=int, nargs="+", default=None,
+                   help="train.py's --exclude_episodes, for the fallback split rule "
+                        "(ignored when val_episodes.json is found).")
     p.add_argument("--max_episodes", type=int, default=None, help="Cap the number of episodes")
     p.add_argument("--device", default="cuda", help="Compute device")
     p.add_argument("--out_dir", default="offline_eval_out", help="Where the overlay PNGs go")
@@ -238,7 +257,8 @@ def main():
         episodes = val_episodes_from_checkpoint(args.checkpoint)
         split_src = "val_episodes.json saved by train.py"
     if episodes is None:
-        episodes = val_episodes_like_train(meta.total_episodes, args.val_ratio, args.val_split)
+        episodes = val_episodes_like_train(meta.total_episodes, args.val_ratio, args.val_split,
+                                           args.exclude_episodes)
         split_src = f"deterministic rule ({args.val_split}, ratio {args.val_ratio})"
     if args.max_episodes:
         episodes = episodes[: args.max_episodes]
