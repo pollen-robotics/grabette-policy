@@ -97,13 +97,34 @@ def test_the_arm_lands_exactly_where_the_policy_asked(seed):
 def test_the_arm_start_pose_is_irrelevant():
     """The deltas must not depend on where the arm happens to be — that is the
     whole point of a relative representation, and the eval loop never tells the
-    converter the measured pose."""
-    rel, _ = to_chunk_relative(make_chunk())
-    a = [ChunkRelativeDeltas().step(x)[:2] for x in rel]
-    b = [ChunkRelativeDeltas().step(x)[:2] for x in rel]
+    converter the measured pose.
+
+    Two halves: (1) the same motion demonstrated from a different frame (SLAM
+    origin / arm base) yields the same deltas; (2) replayed from an ARBITRARY
+    start pose, the arm executes the chunk's motion relative to that start.
+    (This used to compare two identical runs, which proves nothing.)"""
+    absolute = make_chunk()
+    conv = ChunkRelativeDeltas()
+    a = [conv.step(x)[:2] for x in to_chunk_relative(absolute)[0]]
+
+    R_g = Rotation.random(random_state=3)
+    moved = absolute.copy()
+    moved[:, :3] = R_g.apply(absolute[:, :3]) + np.array([4.0, -2.0, 1.0])
+    moved[:, 3:6] = (R_g * Rotation.from_rotvec(absolute[:, 3:6])).as_rotvec()
+    conv.reset()
+    b = [conv.step(x)[:2] for x in to_chunk_relative(moved)[0]]
     for (dp1, dr1), (dp2, dr2) in zip(a, b):
-        assert np.abs(np.asarray(dp1) - np.asarray(dp2)).max() < 1e-12
-        assert np.abs(np.asarray(dr1) - np.asarray(dr2)).max() < 1e-12
+        assert np.abs(np.asarray(dp1) - np.asarray(dp2)).max() < 1e-5
+        assert np.abs(np.asarray(dr1) - np.asarray(dr2)).max() < 1e-5
+
+    # Any start: the arm traces start * (abs_0^-1 abs_i).
+    start_p, start_R = np.array([0.3, 0.1, 0.5]), Rotation.random(random_state=4)
+    R0 = Rotation.from_rotvec(absolute[0, 3:6])
+    for i, (pos, R) in enumerate(simulate_arm(a, start_p, start_R)):
+        want_p = start_p + start_R.apply(R0.inv().apply(absolute[i, :3] - absolute[0, :3]))
+        want_R = start_R * R0.inv() * Rotation.from_rotvec(absolute[i, 3:6])
+        assert np.abs(pos - want_p).max() < 1e-6, f"position off at {i}"
+        assert np.rad2deg((R.inv() * want_R).magnitude()) < 1e-3, f"rotation off at {i}"
 
 
 # ── the reset contract ──────────────────────────────────────────────────
@@ -115,6 +136,22 @@ def test_the_first_delta_of_a_chunk_moves_from_the_reference():
     conv = ChunkRelativeDeltas()
     dp, _dr, _g = conv.step(rel[3])          # pretend the chunk starts at index 3
     assert np.abs(dp - rel[3][:3]).max() < 1e-9
+
+
+def test_skip_stale_emits_incremental_delta():
+    """EV-20: when the eval loop drops the first k (stale) actions of a chunk, it
+    must still step() the converter over them. Then the first EXECUTED delta is
+    the one-step motion A_{k-1}^-1 (a_k - a_{k-1}), not the k-step jump a_k that
+    a converter which never saw the dropped head would emit."""
+    rel, _ = to_chunk_relative(make_chunk())
+    k = 5
+    conv = ChunkRelativeDeltas()
+    for a in rel[:k]:
+        conv.step(a)                         # dropped head: output discarded
+    dp, _dr, _g = conv.step(rel[k])
+    want = Rotation.from_rotvec(rel[k - 1, 3:6]).inv().apply(rel[k, :3] - rel[k - 1, :3])
+    assert np.abs(dp - want).max() < 1e-9
+    assert np.linalg.norm(dp) < 0.5 * np.linalg.norm(rel[k, :3]), "k-step jump"
 
 
 def test_forgetting_to_reset_across_chunks_is_a_large_error():
@@ -159,10 +196,23 @@ def test_the_gripper_passes_through_untouched():
 
 
 def test_the_wire_rotation_is_six_values():
+    """Six values that are the first two ROWS of the expected delta rotation.
+
+    Checking det() after Gram-Schmidt (as this used to) is always 1 and proves
+    nothing; the raw six values must already be orthonormal and must encode
+    A_0^-1 A_1, the motion between the two actions."""
     rel, _ = to_chunk_relative(make_chunk())
-    _dp, dr6d, _g = ChunkRelativeDeltas().step(rel[1])
-    assert np.asarray(dr6d).shape == (6,)
-    assert np.abs(np.linalg.det(r6d_to_matrix(dr6d)) - 1.0) < 1e-9, "not a rotation"
+    conv = ChunkRelativeDeltas()
+    conv.step(rel[0])
+    _dp, dr6d, _g = conv.step(rel[1])
+    dr6d = np.asarray(dr6d)
+    assert dr6d.shape == (6,)
+    r1, r2 = dr6d[:3], dr6d[3:]
+    assert abs(np.linalg.norm(r1) - 1) < 1e-9 and abs(np.linalg.norm(r2) - 1) < 1e-9
+    assert abs(r1 @ r2) < 1e-9, "raw rows are not orthogonal"
+    want = (Rotation.from_rotvec(rel[0, 3:6]).inv()
+            * Rotation.from_rotvec(rel[1, 3:6])).as_matrix()
+    assert np.abs(dr6d - want[:2, :].reshape(6)).max() < 1e-6
 
 
 def test_r6d_round_trips_through_the_wire_encoding():

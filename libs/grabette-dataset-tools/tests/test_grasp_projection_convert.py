@@ -249,6 +249,150 @@ def test_stale_relative_stats_provenance_is_dropped(tmp_path):
     assert "action" in st and "observation.state" in st, "unrelated keys must survive"
 
 
+def make_raw_dataset(tmp_path, n_ep=2, state_offset=0.0):
+    """Minimal on-disk dataset in the RAW layout: 8-D action and state whose
+    gripper channels are angles in radians (closure up to ~1.6). The state is
+    a same-frame copy of the action, as in every existing dataset, unless
+    `state_offset` is set (a measured state that differs from the command)."""
+    import numpy as np
+    import pandas as pd
+
+    root = tmp_path / "raw"
+    (root / "meta").mkdir(parents=True)
+    (root / "data" / "chunk-000").mkdir(parents=True)
+    names = ["x", "y", "z", "ax", "ay", "az", "proximal", "distal"]
+    rows = []
+    for e in range(n_ep):
+        prox, dist = pick_and_lift()
+        for i, (p, d) in enumerate(zip(prox, dist)):
+            vec = np.r_[np.zeros(6), p, d].astype(np.float32)
+            state = vec.copy()
+            state[6:] += state_offset
+            rows.append({"episode_index": e, "frame_index": i,
+                         "action": vec, "observation.state": state})
+    pd.DataFrame(rows).to_parquet(root / "data" / "chunk-000" / "file-000.parquet")
+    feat = {"dtype": "float32", "shape": [8], "names": names}
+    (root / "meta" / "info.json").write_text(json.dumps(
+        {"fps": 50, "features": {"action": feat, "observation.state": feat}}))
+    (root / "meta" / "stats.json").write_text(json.dumps(
+        {"action": {"max": [0.0] * 6 + [1.6, 1.6]}}))
+    return root
+
+
+def test_cli_recomputes_stats_without_repo_id(tmp_path, monkeypatch):
+    """DT-1: `--recompute_stats` is ON by default, so the documented
+    `--src_root A --dst_root B` must recompute stats. It used to need
+    `--repo_id` as well and silently skipped the pass without it, leaving radian
+    stats on [0, 1] channels.
+
+    lerobot is faked so this runs in the no-lerobot CI lane; only the wiring is
+    under test (the dataset is opened on dst_root and recompute_stats is run)."""
+    import sys
+    import types
+
+    from click.testing import CliRunner
+
+    from grabette_dataset_tools.grasp_projection_convert import main
+
+    calls = {}
+
+    class FakeDataset:
+        def __init__(self, repo_id, root):
+            calls["open"] = (repo_id, root)
+
+    def fake_recompute(ds, skip_image_video):
+        calls["recompute"] = ds
+
+    lerobot = types.ModuleType("lerobot")
+    datasets = types.ModuleType("lerobot.datasets")
+    datasets.LeRobotDataset = FakeDataset
+    tools = types.ModuleType("lerobot.datasets.dataset_tools")
+    tools.recompute_stats = fake_recompute
+    monkeypatch.setitem(sys.modules, "lerobot", lerobot)
+    monkeypatch.setitem(sys.modules, "lerobot.datasets", datasets)
+    monkeypatch.setitem(sys.modules, "lerobot.datasets.dataset_tools", tools)
+
+    src, dst = make_raw_dataset(tmp_path), tmp_path / "out"
+    res = CliRunner().invoke(main, ["--src_root", str(src), "--dst_root", str(dst)])
+    assert res.exit_code == 0, res.output
+    assert "recompute" in calls, "stats were not recomputed"
+    repo_id, root = calls["open"]
+    assert root == dst
+    assert repo_id.startswith("local/"), "a non-local id may hit the Hub"
+    # A local stats id is not a Hub repo: it must not become a viewer link.
+    assert "visualize_dataset" not in (dst / "README.md").read_text()
+
+
+def test_cli_recomputed_stats_describe_the_converted_channels(tmp_path, monkeypatch):
+    """DT-1 end to end, against real lerobot and offline: after the default CLI
+    run, stats.json must describe the [0, 1] channels, not the radian ones.
+
+    Skipped in the no-lerobot CI lane (lerobot is imported lazily, here only)."""
+    pytest.importorskip("lerobot")
+    import numpy as np
+    from click.testing import CliRunner
+    from lerobot.datasets import LeRobotDataset
+
+    from grabette_dataset_tools.grasp_projection_convert import main
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")         # no Hub access allowed
+    names = ["x", "y", "z", "ax", "ay", "az", "proximal", "distal"]
+    feat = {"dtype": "float32", "shape": (8,), "names": names}
+    src = tmp_path / "raw"
+    ds = LeRobotDataset.create(repo_id="local/raw", fps=50, root=src, use_videos=False,
+                               features={"action": feat, "observation.state": feat})
+    prox, dist = pick_and_lift(grasp_c=0.95)
+    for _ in range(2):
+        for p, d in zip(prox, dist):
+            vec = np.r_[np.zeros(6), p, d].astype(np.float32)
+            ds.add_frame({"action": vec, "observation.state": vec, "task": "pick"})
+        ds.save_episode()
+    ds.finalize()
+    before = json.loads((src / "meta" / "stats.json").read_text())
+    assert max(before["action"]["max"][-2:]) > 1.0, "fixture must start in radians"
+
+    dst = tmp_path / "out"
+    res = CliRunner().invoke(main, ["--src_root", str(src), "--dst_root", str(dst)])
+    assert res.exit_code == 0, res.output
+    stats = json.loads((dst / "meta" / "stats.json").read_text())
+    for key in ("action", "observation.state"):
+        assert max(stats[key]["max"][-2:]) <= 1.0 + 1e-6, key
+
+
+def test_no_recompute_stats_flag_skips_the_pass(tmp_path, monkeypatch):
+    """The opt-out still works, and does not need lerobot at all."""
+    import sys
+
+    from click.testing import CliRunner
+
+    from grabette_dataset_tools.grasp_projection_convert import main
+
+    monkeypatch.setitem(sys.modules, "lerobot", None)   # any import would fail
+    src, dst = make_raw_dataset(tmp_path), tmp_path / "out"
+    res = CliRunner().invoke(main, ["--src_root", str(src), "--dst_root", str(dst),
+                                    "--no_recompute_stats"])
+    assert res.exit_code == 0, res.output
+
+
+def test_state_action_gripper_mismatch_is_flagged(tmp_path):
+    """DT-7: the state gripper is REBUILT from the action gripper columns. That is
+    right only while state is a same-frame copy of action (true of every dataset
+    so far); a measured state gripper would be silently replaced, so say so."""
+    import warnings
+
+    from grabette_dataset_tools.grasp_projection_convert import convert_dataset
+
+    src = make_raw_dataset(tmp_path, state_offset=0.05)
+    with pytest.warns(UserWarning, match="observation.state"):
+        convert_dataset(src, tmp_path / "out")
+
+    # The usual case stays silent.
+    src2 = make_raw_dataset(tmp_path / "b")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        convert_dataset(src2, tmp_path / "out2")
+
+
 def test_dropping_provenance_is_a_no_op_when_absent(tmp_path):
     import json
 

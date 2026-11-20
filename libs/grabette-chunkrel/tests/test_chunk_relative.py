@@ -96,6 +96,29 @@ def test_round_trip_is_exact(rot, seed):
     assert np.abs(back[:, 6:] - chunk[:, 6:]).max() < 1e-5
 
 
+@pytest.mark.parametrize("seed", range(3))
+def test_r6d_matches_repo_row_encoder(seed):
+    """DT-4: the round trip above is only self-consistent — it passed while
+    encoder AND decoder used the first two COLUMNS. The repo convention
+    (`rotation_matrix_to_rotation_6d_numpy`, and `rotvec_to_r6d` here) is the
+    first two ROWS; columns encode the transpose, i.e. the inverse rotation —
+    the bug that reached the robot once already. Check both directions against
+    an independent row construction."""
+    chunk = make_chunk(seed=seed)
+    rots = Rotation.from_rotvec(chunk[:, 3:6])
+    rel_m = (rots[0].inv() * rots).as_matrix()
+    rows = rel_m[:, :2, :].reshape(len(chunk), 6)
+
+    rel, _ = to_chunk_relative(chunk, rot="r6d")
+    assert np.abs(rel[:, 3:9] - rows).max() < 1e-6
+
+    # Decode a row-encoded input built here, not by to_chunk_relative.
+    given = np.concatenate([rel[:, :3], rows, chunk[:, 6:]], axis=1)
+    back = from_chunk_relative(given, chunk[0, :6], rot="r6d")
+    err = (Rotation.from_rotvec(back[:, 3:6]).inv() * rots).magnitude()
+    assert np.rad2deg(err).max() < 1e-3
+
+
 def test_the_first_action_is_the_identity_offset():
     chunk = make_chunk()
     rel, _ = to_chunk_relative(chunk)

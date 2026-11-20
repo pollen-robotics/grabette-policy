@@ -46,8 +46,15 @@ def test_forward_then_inverse_recovers_the_absolute_actions():
     back = inv(transition(rel))[TransitionKey.ACTION]
 
     assert rel.shape == act.shape
-    assert torch.abs(back[..., :3] - act[..., :3]).max() < 2e-3
-    assert torch.abs(back[..., 6:] - act[..., 6:]).max() < 1e-4
+    # The maths is exact; what remains is float32 storage of ~2 m positions.
+    # (Was 2e-3 — 2 mm of slack where the true error is ~1e-7.)
+    assert torch.abs(back[..., :3] - act[..., :3]).max() < 1e-5
+    # Rotation too: compare as rotations, since rotvecs are only unique mod 2pi.
+    from scipy.spatial.transform import Rotation
+    r_back = Rotation.from_rotvec(back[..., 3:6].reshape(-1, 3).double().numpy())
+    r_act = Rotation.from_rotvec(act[..., 3:6].reshape(-1, 3).double().numpy())
+    assert (r_back.inv() * r_act).magnitude().max() < 1e-5
+    assert torch.abs(back[..., 6:] - act[..., 6:]).max() < 1e-6
 
 
 def test_the_forward_step_actually_changes_the_actions():
@@ -62,6 +69,24 @@ def test_disabled_is_a_passthrough():
     act = make_batch()
     out = ChunkRelativeActionsStep(enabled=False)(transition(act))[TransitionKey.ACTION]
     assert torch.equal(out, act)
+
+
+def test_bf16_round_trip():
+    """DT-3: pi05 runs in bf16 / autocast, and `.numpy()` has no bfloat16, so both
+    steps used to raise `TypeError: Got unsupported ScalarType BFloat16`."""
+    act = make_batch(b=2).to(torch.bfloat16)
+    fwd = ChunkRelativeActionsStep()
+    inv = AbsoluteFromChunkRelativeStep(relative_step=fwd)
+    rel = fwd(transition(act))[TransitionKey.ACTION]
+    out = inv(transition(rel))[TransitionKey.ACTION]
+    assert rel.dtype == out.dtype == torch.bfloat16
+    # bf16 keeps ~3 significant digits: positions ~2 m resolve to ~1e-2.
+    assert torch.allclose(out.float(), act.float(), atol=2e-2)
+
+    # The deploy path takes the reference from a (possibly bf16) tensor too.
+    inv2 = AbsoluteFromChunkRelativeStep()
+    inv2.set_reference(act[0, 0, :6])
+    assert inv2(transition(rel[:1]))[TransitionKey.ACTION].dtype == torch.bfloat16
 
 
 def test_dtype_and_device_are_preserved():
@@ -98,6 +123,26 @@ def test_the_inverse_uses_an_explicitly_set_reference():
     out = inv(transition(rel))[TransitionKey.ACTION]
     # zero offsets from that reference must reproduce the reference itself
     assert torch.allclose(out[0, :, :3], torch.tensor([1.0, 2.0, 3.0]), atol=1e-5)
+
+
+@pytest.mark.parametrize("fwd_batch, inv_batch", [(2, 4), (4, 2)])
+def test_inverse_batch_mismatch_raises(fwd_batch, inv_batch):
+    """DT-2: the paired references belong to the LAST forward batch. Decoding a
+    batch of another size used to zip-truncate (4 chunks against 2 references
+    returned 2 — samples silently dropped) or pair chunks with the wrong poses."""
+    fwd = ChunkRelativeActionsStep()
+    inv = AbsoluteFromChunkRelativeStep(relative_step=fwd)
+    fwd(transition(make_batch(b=fwd_batch)))
+    rel = ChunkRelativeActionsStep()(transition(make_batch(b=inv_batch, seed=1)))
+    with pytest.raises(ValueError, match="batch"):
+        inv(transition(rel[TransitionKey.ACTION]))
+
+
+def test_explicit_batched_reference_mismatch_raises():
+    inv = AbsoluteFromChunkRelativeStep()
+    inv.set_reference(np.zeros((2, 6), dtype=np.float32))
+    with pytest.raises(ValueError, match="batch"):
+        inv(transition(torch.zeros(3, 5, 8)))
 
 
 def test_the_inverse_refuses_to_guess_a_reference():

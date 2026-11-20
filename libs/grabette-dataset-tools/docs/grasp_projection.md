@@ -115,8 +115,11 @@ None of this reaches the trained **checkpoint**, which keeps only
 
 ```bash
 uv run python -m grabette_dataset_tools.grasp_projection_convert \
-    --src <raw-dataset-root> --dst <converted-root> [--rest-is-closed]
+    --src_root <raw-dataset-root> --dst_root <converted-root> [--rest_is_closed]
 ```
+
+Stats are recomputed by default (`--no_recompute_stats` to skip), under a local
+repo id unless `--repo_id` is given.
 
 **Evaluate.** `evaluate.py --grasp_projection {auto,on,off}`. `auto` inspects the
 checkpoint's saved normaliser (`action.max[-2:] ≤ 1.0`) — channel *names* are not
