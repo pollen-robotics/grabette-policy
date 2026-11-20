@@ -371,6 +371,22 @@ def _sample_uncollided(rng, sample_kwargs, start_checker, max_tries: int = 50):
     return wp
 
 
+def ik_filter_summary(n_plans: int, n_ik_dropped: int, ik_attempts_total: int,
+                      max_ik_attempts: int) -> tuple[int, float, float]:
+    """(n_planned, avg attempts per accepted plan, drop rate %) for the log.
+
+    Everything is per PLANNED episode (`n_plans` = episodes that went through
+    the IK filter), not per requested --episodes: physics failures force extra
+    plans, and dividing by the request let the drop rate exceed 100%.
+    Dropped episodes always used the full budget, so they are excluded from
+    the average (mixing them in would obscure the rate)."""
+    n_planned = n_plans - n_ik_dropped
+    accepted_attempts = ik_attempts_total - n_ik_dropped * max_ik_attempts
+    avg_accepted = (accepted_attempts / n_planned) if n_planned else 0.0
+    drop_rate = 100.0 * n_ik_dropped / max(n_plans, 1)
+    return n_planned, avg_accepted, drop_rate
+
+
 def _cube_grasped(sim: Simulation, cube_bid: int, thumb_bid: int, finger_bid: int) -> bool:
     """True iff the cube is in contact with BOTH jaws (thumb=grip_r, finger=distal_r).
 
@@ -1024,14 +1040,10 @@ def main():
         f"recover={type_success['recover']}/{type_counts['recover']}"
     )
     if checker is not None:
-        n_planned = args.episodes - n_ik_dropped
-        # Avg attempts on the accepted episodes only (dropped episodes always
-        # used the full budget, so mixing them in would obscure the rate).
-        accepted_attempts = ik_attempts_total - n_ik_dropped * args.max_ik_attempts
-        avg_accepted = (accepted_attempts / max(n_planned, 1)) if n_planned else 0.0
-        drop_rate = 100.0 * n_ik_dropped / max(args.episodes, 1)
+        n_planned, avg_accepted, drop_rate = ik_filter_summary(
+            ep, n_ik_dropped, ik_attempts_total, args.max_ik_attempts)
         logger.info(
-            f"IK filter: {n_ik_dropped}/{args.episodes} episodes dropped "
+            f"IK filter: {n_ik_dropped}/{ep} planned episodes dropped "
             f"(no feasible plan within {args.max_ik_attempts} attempts); "
             f"avg attempts on accepted plans: {avg_accepted:.1f}."
         )

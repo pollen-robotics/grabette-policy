@@ -6,6 +6,7 @@ gRPC servers run in background threads and read cached camera frames.
   - ArmService (port 50052): delta Cartesian arm control
 """
 
+import collections
 import logging
 import sys
 import time
@@ -83,13 +84,19 @@ class SimulationServer:
     """MuJoCo simulation with gRPC interfaces for the Gripette and arm."""
 
     def __init__(self, scene_xml: str | Path | None = None, initial_arm_joints=None,
-                 gripper_hold_open_duration: float = 0.0):
+                 gripper_hold_open_duration: float = 0.0, seed: int | None = None):
         self._sim = Simulation(scene_xml)
         self._kin = Kinematics(orientation_weight=10.0)
         self._lock = threading.Lock()
+        # Viewer key presses, handled by the main loop (see _key_callback).
+        self._pending_keys = collections.deque()
         self._start_time = time.monotonic()
+        # One seed drives every reset draw (cube + home pose) so two evals with
+        # the same seed see the same episode sequence; None = fresh entropy.
+        # Independent child streams for the server and the ArmServicer.
+        self._seed_server, self._seed_servicer = np.random.SeedSequence(seed).spawn(2)
         # rng for the reset shortcuts
-        self._rng = np.random.default_rng()
+        self._rng = np.random.default_rng(self._seed_server)
         # Hold-open grace period after a reset. Originally added (default
         # 1.5 s) to work around the v3 model getting stuck commanding the
         # gripper closed after a reset, because that training distribution
@@ -199,8 +206,9 @@ class SimulationServer:
         """True if `arm_joints` puts the arm/gripper in penetrating contact with
         the environment. Arm-vs-arm contacts are disabled by the model's
         collision classes, so any penetration here is the robot hitting the
-        table/floor. The cube-on-table resting contact (body `cube_bid`) is
-        ignored."""
+        table/floor — or the cube. Only the cube's own resting contact with the
+        environment (table / world bodies) is ignored: an arm penetrating the
+        cube (body `cube_bid`) is a colliding start too."""
         m, d = self._sim.model, self._sim.data
         self._sim.reset_arm(arm_joints)
         mujoco.mj_forward(m, d)
@@ -210,7 +218,9 @@ class SimulationServer:
             b1 = m.geom(d.contact[c].geom1).bodyid[0]
             b2 = m.geom(d.contact[c].geom2).bodyid[0]
             if b1 == cube_bid or b2 == cube_bid:
-                continue
+                other = b2 if b1 == cube_bid else b1
+                if other == 0 or "table" in m.body(other).name:
+                    continue        # cube resting on the table / floor
             return True
         return False
 
@@ -275,13 +285,40 @@ class SimulationServer:
             return (float(cx), float(cy), 0.41)
 
     def _key_callback(self, keycode: int):
-        """MuJoCo viewer key handler — R / 1 / 2 reset the scene."""
+        """MuJoCo viewer key callback (viewer thread): only queue the key.
+
+        The reset itself runs in the main loop (_handle_key). Taking the sim
+        lock here, in the viewer thread, could deadlock against the main loop,
+        which holds the sim lock while it calls viewer.sync()."""
+        self._pending_keys.append(keycode)
+
+    def _handle_key(self, keycode: int):
+        """R / 1 / 2 reset the scene (main thread, sim lock NOT held)."""
         if keycode == _KEY_R:
             self.reset_episode_random()
         elif keycode == _KEY_1:
             self.reset_arm_random()
         elif keycode == _KEY_2:
             self.reset_cube_random()
+        else:
+            return
+        self._begin_servicer_episode()
+
+    def _begin_servicer_episode(self):
+        """After a viewer key reset, start a fresh episode in the ArmServicer
+        the way its Reset RPC does: lift is measured from the cube's NEW
+        resting pose, the grasp diagnostics restart, and the Cartesian
+        integrator re-syncs to the arm (needed after '2' too, which moves only
+        the cube but must still drop any stale integrator target)."""
+        arm = getattr(self, "_arm_servicer", None)
+        if arm is None:
+            return
+        with self._lock:
+            cube = self._sim.data.body("red_cube").xpos
+            arm._cube_start_xy = cube[:2].copy()
+            arm._cube_start_z = float(cube[2])
+            arm._reset_grasp_diag()
+            arm._sync_target_from_sim()
 
     def _physics_loop(self):
         """Step physics at the model's timestep rate (background thread)."""
@@ -323,7 +360,8 @@ class SimulationServer:
         # The servicer also gets a back-reference to the server so the
         # Reset RPC can call reset_episode_random() — same training-
         # distribution sampling as the keyboard 'R' shortcut.
-        self._arm_servicer = ArmServicer(self._sim, self._kin, self._lock, self._start_time, server=self)
+        self._arm_servicer = ArmServicer(self._sim, self._kin, self._lock, self._start_time, server=self,
+                                         seed=self._seed_servicer)
         arm_pb2_grpc.add_ArmServiceServicer_to_server(
             self._arm_servicer,
             self._arm_server,
@@ -396,10 +434,17 @@ class SimulationServer:
                     if step % camera_interval == 0:
                         self._camera_frame = self._sim.render_camera(out_size=CAMERA_OUT_SIZE)
 
-                step += 1
+                    step += 1
 
-                if viewer is not None and step % viewer_interval == 0:
-                    viewer.sync()
+                    # Under the sim lock: sync copies mjData, and a gRPC
+                    # handler (e.g. Reset's mj_forward) running at the same
+                    # time aborts MuJoCo ("mj_copyDataVisual: attempting to
+                    # copy mjData while stack is in use").
+                    if viewer is not None and step % viewer_interval == 0:
+                        viewer.sync()
+
+                while self._pending_keys:
+                    self._handle_key(self._pending_keys.popleft())
 
                 t_target = t_wall + step * dt
                 t_now = time.perf_counter()

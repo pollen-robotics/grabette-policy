@@ -1,6 +1,9 @@
 """6D continuous rotation representation (Zhou et al., CVPR 2019).
 
-Encodes orientation as the first two columns of the rotation matrix (6 values).
+Encodes orientation as the first two ROWS of the rotation matrix (6 values,
+R[0, :] then R[1, :]) — not the columns of the paper. Every encoder and decoder
+in the pipeline (arm servers, evaluate.py, dataset conversion) must use this
+same row convention: a row/column mix-up silently sends inverse rotations.
 No singularities, smooth gradients for neural networks.
 """
 
@@ -22,7 +25,7 @@ def rotation_matrix_to_6d(matrix: np.ndarray) -> np.ndarray:
 def rotation_6d_to_matrix(rot_6d: np.ndarray) -> np.ndarray:
     """Convert 6D rotation representation to a 3x3 rotation matrix.
 
-    Uses Gram-Schmidt orthogonalization to recover the third column.
+    Uses Gram-Schmidt orthogonalization on the two rows to recover the third row.
 
     Args:
         rot_6d: shape (6,) or (N, 6).

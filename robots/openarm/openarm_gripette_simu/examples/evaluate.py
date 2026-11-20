@@ -56,6 +56,7 @@ def _load_policy_any(checkpoint: str):
     return policy
 from scipy.spatial.transform import Rotation
 from openarm_gripette_simu.rotation import (
+    delta_6d_to_matrix,
     rotation_6d_to_matrix as rotation_6d_to_rotation_matrix_numpy,
     rotation_matrix_to_6d as rotation_matrix_to_rotation_6d_numpy,
 )
@@ -107,7 +108,15 @@ def clamp_delta(delta_pos, delta_rot_6d, clamp_pos_m, clamp_rot_rad):
             delta_pos = delta_pos * (clamp_pos_m / n)
             was = True
     if clamp_rot_rad is not None:
-        R = rotation_6d_to_rotation_matrix_numpy(delta_rot_6d.reshape(1, 6))[0]
+        # Decode exactly as the arm server does. A degenerate (near-zero) 6D is
+        # a "hold" that the server applies as NO rotation; plain Gram-Schmidt
+        # would turn it into an arbitrary rotation, which the cap below would
+        # then re-encode at unit norm — a real rotation the server applies
+        # (and an exactly-zero 6D made Rotation.from_matrix raise). Pass holds
+        # through untouched.
+        R, degenerate = delta_6d_to_matrix(delta_rot_6d)
+        if degenerate:
+            return delta_pos, delta_rot_6d, was
         rotvec = Rotation.from_matrix(R).as_rotvec()
         ang = float(np.linalg.norm(rotvec))
         if ang > clamp_rot_rad:
@@ -138,7 +147,14 @@ def apply_grip_gain(g1, g2, gain, ref):
         return float(g1), float(g2)
     g1 = ref[0] + gain * (g1 - ref[0])
     g2 = ref[1] + gain * (g2 - ref[1])
-    return float(np.clip(g1, -1.6, 1.6)), float(np.clip(g2, -1.6, 1.6))
+    # Symmetric (sign-agnostic) bound at 1.6 rad, but never past the gripper
+    # service's own joint limit: the proximal limit is radians(85) = 1.4835,
+    # and an out-of-range goal is REJECTED by the real gripper (it keeps its
+    # old goal), so the gained close would silently never happen. Same float32
+    # margin as GripAssist.
+    b1 = min(1.6, GRIPPER_LIMITS[0][1] - GripAssist._LIMIT_MARGIN)
+    b2 = min(1.6, GRIPPER_LIMITS[1][1] - GripAssist._LIMIT_MARGIN)
+    return float(np.clip(g1, -b1, b1)), float(np.clip(g2, -b2, b2))
 
 
 # Gripper joint limits in ROBOT FRAME, mirroring the AUTHORITY —
@@ -653,7 +669,32 @@ def parse_args():
         p.error("either --checkpoint or --policy_addr is required")
     if args.grip_assist is not None and args.async_exec:
         p.error("--grip_assist is sync-mode only (not --async_exec)")
+    warn_inert_flags(args)
     return args
+
+
+def warn_inert_flags(args):
+    """Warn (don't fail) about flags the selected mode parses but never uses,
+    so an A/B run is not silently comparing identical configurations."""
+    inert = []
+    if args.async_exec:
+        if args.max_ticks != 1:
+            inert.append(("--max_ticks", "--async_exec (the executor paces ticks itself)"))
+        if args.skip_stale:
+            inert.append(("--skip_stale", "--async_exec (chunk handoff already skips)"))
+    else:
+        if args.commit_close is not None:
+            inert.append(("--commit_close", "sync mode (it is an --async_exec option)"))
+        if args.policy_addr is not None and args.skip_stale:
+            inert.append(("--skip_stale", "--policy_addr (remote inference has no local queue)"))
+        if args.grip_assist is not None:
+            if args.latch_close is not None:
+                inert.append(("--latch_close", "--grip_assist (the assist owns the gripper)"))
+            if args.grip_gain != 1.0:
+                inert.append(("--grip_gain", "--grip_assist (the assist owns the gripper)"))
+    for flag, why in inert:
+        logger.warning(f"{flag} is ignored with {why}.")
+    return inert
 
 
 class CameraStream:
@@ -1121,9 +1162,13 @@ def detect_chunk_relative(checkpoint):
         logger.warning(f"Could not read the processor config ({e}); "
                        "pass --chunk_relative on|off explicitly")
         return None
-    names = [st.get("registry_name") or st.get("class") or "" for st in steps
-             if isinstance(st, dict)]
-    found = any("chunk_relative" in str(x) for x in names)
+    steps = [st for st in steps if isinstance(st, dict)]
+    names = [st.get("registry_name") or st.get("class") or "" for st in steps]
+    # A step registered with enabled=False is a pass-through: the actions are
+    # NOT offsets, so it must not count (missing "enabled" = on, its default).
+    found = any("chunk_relative" in str(name)
+                and (st.get("config") or {}).get("enabled", True) is not False
+                for name, st in zip(names, steps))
     logger.info(f"Chunk-relative auto-detect: preprocessor steps = {names} -> "
                 f"{'CHUNK-RELATIVE' if found else 'per-step deltas'}")
     return found
@@ -1157,8 +1202,12 @@ def build_observation(
 ):
     """Build the full observation (camera image + state) for one step.
 
-    Returns (camera_image, state, frame_ts_ms)."""
+    Returns (camera_image, state, frame_ts_ms, gripper_angles). gripper_angles
+    is the MEASURED (proximal, distal) in radians even when the state carries
+    the grasp projection's (strategy, closure) — consumers comparing against
+    sent joint goals (GripAssist's lag test) need angles, not the encoding."""
     camera_image, gripper_joints, frame_ts_ms = camera.get()
+    gripper_angles = tuple(float(v) for v in gripper_joints[:2])
 
     if grasp_projection is not None:
         # The policy was TRAINED on (strategy, closure) proprioception, so the
@@ -1184,7 +1233,7 @@ def build_observation(
     else:
         state = gripper_joints
 
-    return camera_image, state, frame_ts_ms
+    return camera_image, state, frame_ts_ms, gripper_angles
 
 
 def run_episode(
@@ -1286,7 +1335,7 @@ def run_episode(
         prev_loop_start = loop_start
 
         # --- Observe ---
-        camera_image, state, frame_ts_ms = build_observation(
+        camera_image, state, frame_ts_ms, gripper_angles = build_observation(
             arm_stub,
             arm_pb2,
             camera,
@@ -1374,7 +1423,20 @@ def run_episode(
             R_acc = np.eye(3)
             gripper_goal = None
             frozen_error = None
-            for _ in range(n_ticks):
+            for tick in range(n_ticks):
+                # Never REPLAN on a catch-up tick. Every select_action() call
+                # appends `batch` to the policy's observation queue, so a chunk
+                # generated on the 2nd+ tick of an iteration would be
+                # conditioned on (obs_t, obs_t) — a duplicated pair, out of
+                # distribution for n_obs_steps=2. Stop at the chunk boundary
+                # instead; the next iteration replans from a fresh frame, and
+                # the unsent ticks are handed back to the wallclock budget.
+                if tick > 0 and client is None:
+                    q = policy_action_queue(policy)
+                    if q is not None and len(q) == 0:
+                        t_nominal -= (n_ticks - tick) * dt
+                        n_ticks = tick
+                        break
                 # Latency compensation (UMI-style): when the policy is about
                 # to REPLAN (action queue empty), the new chunk starts from
                 # the pose in the observation — but that frame is stale, and
@@ -1504,10 +1566,13 @@ def run_episode(
                     f"Reset/re-home the arm before the next one.",
                     flush=True,
                 )
+                # Still a FAIL, but report how far the cube actually got (a
+                # hard-coded 0.0 biased the run's average displacement down).
+                status = arm_stub.GetSuccessStatus(arm_pb2.SuccessStatusRequest())
                 return {
                     "success": False,
                     "steps": step + 1,
-                    "displacement_mm": 0.0,
+                    "displacement_mm": status.cube_displacement * 1000,
                     "duration_s": time.perf_counter() - episode_start,
                     "n_clamped": n_clamped,
                     "n_rejected": n_rejected,
@@ -1555,8 +1620,11 @@ def run_episode(
             # approach and any already-good grasp are never perturbed.
             _load = camera.get_load()
             _model_grip = (gg1, gg2)
+            # meas MUST be joint angles like the commands: with the grasp
+            # projection on, state[-2:] is (strategy, closure), and the
+            # |angle - closure| "lag" read as a permanent stall.
             gg1, gg2 = grip_assist.update((gg1, gg2), _load, step,
-                                          meas=tuple(state[-2:]))
+                                          meas=gripper_angles)
             if assist_log is not None:
                 # Structured per-tick trace: everything needed to reconstruct a
                 # grasp attempt offline (why it engaged or didn't, what it sent,
@@ -1984,6 +2052,16 @@ def main():
         f"Gripper action space: "
         f"{'(strategy, closure) -> decoded to angles' if projection else 'raw angles'}"
     )
+    if projection is not None and args.async_exec:
+        # The async path (run_episode_async / ChunkExecutor) is not wired for
+        # the projection: it would feed raw angles as the state and send
+        # (strategy, closure) to the servo as radians (closure 1.0 -> 1 rad),
+        # and compare --latch_close/--commit_close against (s, c).
+        raise SystemExit(
+            "--grasp_projection needs sync mode (not --async_exec): the async "
+            "executor neither encodes the state nor decodes the gripper "
+            "actions. Run without --async_exec."
+        )
 
     # Chunk-relative actions. Getting this wrong is as silent as the projection:
     # 8D offsets read as 11D per-step deltas would slice the rotation out of the
@@ -2206,6 +2284,19 @@ def main():
             f"Policy: action_space={'joint' if joint_mode else 'cartesian'}, "
             f"state_dim={state_dim}, action_dim={action_dim}, "
             f"n_action_steps={policy.config.n_action_steps}"
+        )
+
+    if joint_mode and not hasattr(arm_pb2, "JointCommand"):
+        # The joint-space path calls ArmService.SendJointCommand, which no
+        # arm.proto defines (sim or real): it would die with an AttributeError
+        # at the first step, after the arm was already reset. Fail here, before
+        # any Reset or motion (joint_mode is only known once the server has
+        # reported the arm's joint count, hence after connecting).
+        raise SystemExit(
+            "This checkpoint emits joint-space actions, which need "
+            "ArmService.SendJointCommand — not defined in arm.proto, so neither "
+            "the sim nor the real arm server can execute them. Evaluate an 11D "
+            "Cartesian (or 8D chunk-relative) checkpoint instead."
         )
 
     # Persistent camera stream: opened ONCE for the whole run. Opening a fresh

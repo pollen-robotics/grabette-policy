@@ -50,6 +50,15 @@ def test_valid_delta_is_unchanged(deg):
     np.testing.assert_allclose(R, _rot_z(deg), atol=1e-9)
 
 
+def test_6d_is_the_first_two_rows():
+    # Pins the convention the docs now state (SIM-7): rows, not columns.
+    R = _rot_z(37.0) @ np.array([[1.0, 0.0, 0.0],
+                                 [0.0, np.cos(0.4), -np.sin(0.4)],
+                                 [0.0, np.sin(0.4), np.cos(0.4)]])
+    np.testing.assert_array_equal(rotation_matrix_to_6d(R), R[:2].ravel())
+    np.testing.assert_allclose(rotation_6d_to_matrix(R[:2].ravel()), R, atol=1e-12)
+
+
 def test_slightly_short_rows_still_decode():
     # A healthy but imperfect prediction (rows ~0.6 long) is renormalized, not dropped.
     r6d = 0.6 * rotation_matrix_to_6d(_rot_z(2.0))
