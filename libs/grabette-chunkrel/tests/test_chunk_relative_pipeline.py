@@ -32,7 +32,7 @@ from lerobot.processor import (  # noqa: E402
     NormalizerProcessorStep,
     RenameObservationsProcessorStep,
 )
-from lerobot.types import TransitionKey  # noqa: E402
+from lerobot.lerobot_types import TransitionKey  # noqa: E402
 
 K, B, ADIM, SDIM = 50, 2, 8, 2
 
@@ -87,13 +87,16 @@ def run(steps, absolute):
 
 def test_the_relative_slot_precedes_the_normaliser_in_the_shipped_factory():
     """Read from lerobot's source: if a bump reorders the pipeline, our whole
-    stats argument changes and we want to hear about it here."""
+    stats argument changes and we want to hear about it here.
+
+    lerobot>=0.6.1 wires defaults as ``steps.normalize`` / ``steps.unnormalize``.
+    """
     src = inspect.getsource(processor_pi05.make_pi05_pre_post_processors)
     order = re.findall(
-        r"(relative_step|NormalizerProcessorStep|UnnormalizerProcessorStep"
+        r"(relative_step|steps\.normalize|steps\.unnormalize"
         r"|AbsoluteActionsProcessorStep)", src)
-    assert order.index("relative_step") < order.index("NormalizerProcessorStep")
-    assert order.index("UnnormalizerProcessorStep") < order.index("AbsoluteActionsProcessorStep")
+    assert order.index("relative_step") < order.index("steps.normalize")
+    assert order.index("steps.unnormalize") < order.index("AbsoluteActionsProcessorStep")
 
 
 def test_relative_actions_normalise_into_the_trained_range():

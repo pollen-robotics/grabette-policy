@@ -26,7 +26,7 @@ motors (7 here vs. 8 for the standard OpenArm).
 import logging
 from functools import cached_property
 
-from lerobot.types import RobotAction, RobotObservation
+from lerobot.lerobot_types import RobotAction, RobotObservation
 from lerobot.utils import check_if_already_connected, check_if_not_connected
 
 from lerobot.robots.openarm_follower import OpenArmFollower

@@ -5,6 +5,9 @@ on:
     branches: [develop, main]
   pull_request:
 
+env:
+  PYTHON_VERSION: "3.12"
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -26,6 +29,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Lock is up to date
         run: uv lock --check
@@ -36,14 +41,18 @@ jobs:
         run: uv sync --all-packages
 
       - name: Import smoke test
-        # The OpenArm sim is validated by the build step above; importing it
-        # at runtime additionally needs system urdfdom (placo).
+        # The OpenArm packages are exercised by the test step below (placo
+        # loads from the cmeel-urdfdom/tinyxml2 wheels pinned in the root
+        # pyproject.toml; no system urdfdom needed).
         run: |
           uv run python - <<'PY'
           import importlib, sys
+          # gripette_core is safe to list despite depending on placo via its
+          # [kinematics] extra: its re-exports are lazy (PEP 562), so importing
+          # the package does not import kinematics, and so needs no urdfdom.
           mods = ["grabette_dataset_tools", "grabette_dataset_tools.grasp_projection",
                   "grabette_chunkrel", "grabette_attention", "gripette",
-                  "openarm_gripette_model"]
+                  "gripette_core", "openarm_gripette_model"]
           failed = []
           for m in mods:
               try:
@@ -54,6 +63,22 @@ jobs:
                   failed.append(m)
           sys.exit(1 if failed else 0)
           PY
+
+      - name: Headless GL for MuJoCo
+        # The sim tests render offscreen with MUJOCO_GL=egl (tests/conftest.py);
+        # `import mujoco` then needs libEGL, which the runner image lacks.
+        # Mesa provides a software EGL device, no GPU or display needed.
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libegl-mesa0 libgl1-mesa-dri
+
+      - name: OpenArm tests (sim + real driver, no hardware)
+        # Runs in this job because it already has the full workspace env
+        # (MuJoCo, placo, lerobot, torch) and the LFS meshes. Test dirs are
+        # named explicitly: examples/ holds bench scripts named test_*.py that
+        # talk to live servers and must not be collected.
+        run: |
+          uv run --no-sync --with pytest python -m pytest -q \
+            robots/openarm/openarm_gripette_simu/tests \
+            robots/openarm/openarm_gripette/tests
 
   proto-sync:
     # The sim's gripper.proto must stay field-for-field identical to gripette's:
@@ -68,7 +93,7 @@ jobs:
           echo "grabette rev: $REV"
           curl -fsSL "https://raw.githubusercontent.com/pollen-robotics/grabette/$REV/packages/gripette/proto/gripper.proto" \
             -o "$RUNNER_TEMP/gripper.proto"
-          diff -u "$RUNNER_TEMP/gripper.proto" robots/openarm/openarm_gripette_simu/proto/gripper.proto
+          diff -u "$RUNNER_TEMP/gripper.proto" libs/gripette-core/proto/gripper.proto
 
   tests:
     runs-on: ubuntu-latest
@@ -77,6 +102,43 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+
+      - name: Shared-core unit tests
+        # gripette-core is the proto/kinematics/rotation package both arms
+        # share. Installed WITHOUT the [kinematics] extra on purpose: these
+        # tests assert in a subprocess that importing gripette_core does not
+        # drag in placo/mujoco/cv2, so running them in a placo-free env is
+        # itself the proof that a proto-only consumer (examples/teleop_bridge)
+        # can install this package on a machine with no urdfdom.
+        run: |
+          uv sync --package gripette-core --extra test
+          uv run --no-sync --package gripette-core pytest libs/gripette-core/tests -q
+
+      - name: reBot driver unit tests
+        # Python 3.11 on purpose: rebot-gripette gates
+        # lerobot-robot-seeed-b601 behind `python_version >= "3.12"` (the same
+        # trick openarm-gripette uses), so this lane installs no lerobot and
+        # no torch. The plugin-dependent tests skip themselves; what still
+        # RUNS here is the part that matters most before anyone powers the
+        # arm — that the home pose is not sitting on a hard stop, and that IK
+        # round-trips and stays inside the joint limits on the real model.
+        # Hardware is never touched: nothing in these tests opens a CAN bus.
+        run: |
+          git lfs pull --include "robots/rebot/**"
+          uv sync --python 3.11 --package rebot-gripette --extra test
+          uv run --no-sync --python 3.11 --package rebot-gripette pytest robots/rebot/rebot_gripette/tests -q
+
+      - name: reBot model consistency
+        # robot.urdf and robot.xml come from two separate onshape-to-robot
+        # passes and are then mass-patched by postprocess_rebot.py. Placo reads
+        # one, MuJoCo the other, and when they disagree nothing raises - the
+        # first import had a 5.35 kg arm in the URDF and 3.40 kg in the MJCF.
+        # Pure-XML checks (no mujoco/placo), plus a guard that the LFS meshes
+        # were actually fetched rather than left as pointer stubs.
+        run: |
+          git lfs pull --include "robots/rebot/**"
+          uv sync --package rebot-gripette-model --extra test
+          uv run --no-sync --package rebot-gripette-model pytest robots/rebot/rebot_gripette_model/tests -q
 
       - name: Dataset-tools unit tests
         # Python 3.11 on purpose: lerobot is marker-gated to >= 3.12, so this
@@ -91,15 +153,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
       - name: Build a lerobot venv (CPU torch)
         # CPU-only torch via `uv pip install --torch-backend=cpu` (~200 MB); a
         # plain workspace sync installs the CUDA wheel (~2.5 GB) — the tests use
         # no GPU. The lerobot spec is read from the dataset-tools pyproject so the
         # tested version tracks the pin automatically.
         run: |
-          SPEC=$(grep -oE "lerobot\[[a-z,]*\]==[0-9.]+" libs/grabette-dataset-tools/pyproject.toml | head -1)
+          SPEC=$(grep -oE "lerobot\[[a-z,]*\](==[0-9.]+|>=[0-9.]+,<[0-9.]+)" libs/grabette-dataset-tools/pyproject.toml | head -1)
           echo "Testing against: $SPEC"
-          uv venv .venv-lerobot --python 3.12
+          uv venv .venv-lerobot
           VIRTUAL_ENV=.venv-lerobot uv pip install --torch-backend=cpu "$SPEC" pytest pandas scipy
 
       - name: Attention-diagnostics unit tests
@@ -119,3 +183,12 @@ jobs:
         run: |
           PYTHONPATH=libs/grabette-chunkrel .venv-lerobot/bin/python -m pytest \
             libs/grabette-chunkrel/tests -q
+
+      - name: Policy script tests (DiffusionPolicy, Pi05)
+        # The policy projects are standalone (own uv.lock, Pi05 pins a lerobot
+        # git revision), but their tests touch only the pure helpers, which
+        # import lerobot at module scope. Run here against the workspace
+        # lerobot rather than building two more multi-GB torch envs.
+        run: |
+          PYTHONPATH=libs/grabette-chunkrel .venv-lerobot/bin/python -m pytest -q \
+            policies/DiffusionPolicy/tests policies/Pi05/tests

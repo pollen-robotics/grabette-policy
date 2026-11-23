@@ -2,7 +2,7 @@
 
 Policy learning for [GRABETTE](https://github.com/pollen-robotics/grabette):
 training recipes, the action representations and diagnostics they use,
-and the OpenArm-Gripette robot they are evaluated and deployed on.
+and the two Gripette-equipped robots they are evaluated and deployed on.
 
 Datasets come from the GRABETTE recording rig
 ([grabette](https://github.com/pollen-robotics/grabette)) and are turned into
@@ -14,23 +14,31 @@ LeRobot datasets by the SLAM pipeline
 | [`libs/grabette-dataset-tools`](libs/grabette-dataset-tools) | Grasp projection, chunk-relative stats, raw-capture normalization, publish gate |
 | [`libs/grabette-chunkrel`](libs/grabette-chunkrel) | Chunk-relative action representation + its LeRobot processor steps |
 | [`libs/grabette-attention`](libs/grabette-attention) | Offline attention maps and view-ablation diagnostics |
+| [`libs/gripette-core`](libs/gripette-core) | Shared across both arms and sim/real: proto, kinematics, rotation, the `ArmService` implementation. Imports no mujoco — the hardware drivers depend on it |
+| [`libs/gripette-sim`](libs/gripette-sim) | Shared MuJoCo pieces: simulation wrapper, fisheye camera, gripper service, obstacle clearance, lift tracking |
 | [`policies/DiffusionPolicy`](policies/DiffusionPolicy) | Diffusion Policy data prep and training (own `uv.lock`) |
 | [`policies/Pi05`](policies/Pi05) | Pi0.5 fine-tuning (own `uv.lock`) |
 | [`policies/ACT`](policies/ACT) | ACT training with chunk-relative actions (own `uv.lock`) |
-| [`robots/openarm`](robots/openarm) | OpenArm-Gripette: model, MuJoCo sim, real-arm driver, teleop bridge |
+| [`robots/openarm`](robots/openarm) | OpenArm-Gripette (7-DoF, torso-mounted): model, MuJoCo sim, real-arm driver, teleop bridge |
+| [`robots/rebot`](robots/rebot) | reBot-Gripette (6-DoF, bench-mounted): model, MuJoCo sim, real-arm driver |
+
+Both arms serve the **same** `ArmService` from `gripette-core`, in simulation
+and on hardware, so one eval script drives any of the four combinations via
+`--arm_addr` / `--gripper_addr`.
 
 ## Development
 
-Requires [uv](https://docs.astral.sh/uv/). `libs/*` and
-`robots/openarm/*` form one uv workspace with a single lock; DiffusionPolicy,
-Pi05 and ACT are standalone projects with their own lock.
+Requires [uv](https://docs.astral.sh/uv/). `libs/*` and `robots/*/*` form one
+uv workspace with a single lock; DiffusionPolicy, Pi05 and ACT are standalone
+projects with their own lock.
 
 ```bash
 uv sync --all-packages                       # the workspace
 cd policies/DiffusionPolicy && uv sync       # a standalone policy project
 ```
 
-The OpenArm meshes are in Git LFS: install [git-lfs](https://git-lfs.com) before cloning.
+Both arms' meshes are in Git LFS (OpenArm 105 STLs, reBot 121): install
+[git-lfs](https://git-lfs.com) before cloning.
 
 ### The grabette pin
 

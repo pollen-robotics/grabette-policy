@@ -11,7 +11,7 @@ constraint-dependencies = [
 [tool.uv.workspace]
 # policies/ (DiffusionPolicy, Pi05) are NOT members: each is a scripts-only project with
 # its own uv.lock (they pin different lerobot versions).
-members = ["libs/*", "robots/openarm/*"]
+members = ["libs/*", "robots/*/*"]
 
 [tool.uv.sources]
 # The gripper's own package, from the grabette repo (the device code lives

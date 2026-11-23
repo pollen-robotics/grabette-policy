@@ -36,7 +36,7 @@ from lerobot.processor import (
     ProcessorStepRegistry,
     UnnormalizerProcessorStep,
 )
-from lerobot.types import EnvTransition, TransitionKey
+from lerobot.lerobot_types import EnvTransition, TransitionKey
 
 from grabette_chunkrel.chunk_relative import (
     DEFAULT_JUMP_CAP_DEG,

@@ -6,25 +6,31 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "mujoco>=3.6",
-    "placo>=0.9",
     "numpy",
     "opencv-python>=4.9",
-    # Floor matches the generated proto stubs (GRPC_GENERATED_VERSION=1.81.0):
-    # they refuse to import on older grpcio.
+    # server.py imports grpc directly. The generated stubs (and the floor they
+    # need) now live in gripette-core, which carries that constraint itself.
     "grpcio>=1.81",
-    "protobuf>=4.25",
     "openarm-gripette-model",
+    # [kinematics] pulls placo: this package uses Kinematics, not just the
+    # proto contract. placo and protobuf are no longer listed directly — the
+    # only importer of either moved into gripette-core.
+    "gripette-core[kinematics]",
+    # The camera, the gripper service and the MuJoCo wrapper moved here: they
+    # are the same for any arm wearing this gripper, and gripette-core cannot
+    # hold them (it refuses mujoco/opencv for the hardware drivers' sake).
+    "gripette-sim",
 ]
 
 [project.optional-dependencies]
 dev = ["grpcio-tools>=1.60"]
-dataset = ["lerobot[dataset]==0.6.0 ; python_version >= '3.12'"]
+dataset = ["lerobot[dataset]>=0.6.1,<0.7.0 ; python_version >= '3.12'"]
 # Policy evaluation client (examples/evaluate.py): loads a trained policy and
 # drives the sim over gRPC. [diffusion] supplies diffusers; [pi] supplies the
 # transformers stack for the Pi0/Pi0.5/Pi0Fast checkpoints this client supports.
 # scipy is also used directly for rotation math.
 eval = [
-    "lerobot[diffusion,pi]==0.6.0 ; python_version >= '3.12'",
+    "lerobot[diffusion,pi]>=0.6.1,<0.7.0 ; python_version >= '3.12'",
     "scipy>=1.10",
     # Chunk-relative checkpoints register a custom ProcessorStep, so lerobot
     # cannot rebuild their pipeline without this import being available. Not
@@ -54,6 +60,8 @@ build-backend = "hatchling.build"
 # Resolved from the monorepo workspace (robots/openarm/openarm_gripette_model),
 # not PyPI. Was a local `../` path dep in the standalone repo.
 openarm-gripette-model = { workspace = true }
+gripette-core = { workspace = true }
+gripette-sim = { workspace = true }
 grabette-chunkrel = { workspace = true }
 grabette-dataset-tools = { workspace = true }
 
