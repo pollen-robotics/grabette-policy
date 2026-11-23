@@ -21,8 +21,11 @@ from grabette_dataset_tools.chunk_relative_stats import (
 NAMES = ["x", "y", "z", "ax", "ay", "az", "proximal", "distal"]
 
 
-def make_dataset(tmp_path, n_ep=4, t=60, seed=0):
-    """A minimal dataset root: absolute poses from an arbitrary SLAM origin."""
+def make_dataset(tmp_path, n_ep=4, t=60, seed=0, fps=50, rot_step_deg=None):
+    """A minimal dataset root: absolute poses from an arbitrary SLAM origin.
+
+    `rot_step_deg` replaces the random rotation with a steady turn of that many
+    degrees per frame."""
     r = np.random.default_rng(seed)
     root = tmp_path / "ds"
     (root / "meta").mkdir(parents=True)
@@ -32,12 +35,14 @@ def make_dataset(tmp_path, n_ep=4, t=60, seed=0):
     for e in range(n_ep):
         pos = np.cumsum(r.normal(scale=0.01, size=(t, 3)), axis=0) + r.normal(scale=5, size=3)
         rot = np.cumsum(r.normal(scale=0.02, size=(t, 3)), axis=0) + r.normal(scale=1, size=3)
+        if rot_step_deg is not None:
+            rot = np.outer(np.arange(t), [np.deg2rad(rot_step_deg), 0.0, 0.0])
         grip = np.abs(r.normal(scale=0.3, size=(t, 2)))
         act = np.concatenate([pos, rot, grip], axis=1)
         rows += [{"episode_index": e, "action": a.astype(np.float32)} for a in act]
     pd.DataFrame(rows).to_parquet(root / "data" / "chunk-000" / "file-000.parquet")
 
-    (root / "meta" / "info.json").write_text(json.dumps({"fps": 50}))
+    (root / "meta" / "info.json").write_text(json.dumps({"fps": fps}))
     absolute = np.stack([r_["action"] for r_ in rows]).astype(np.float64)
     (root / "meta" / "stats.json").write_text(json.dumps({
         "action": {
@@ -155,3 +160,27 @@ def test_a_chunk_longer_than_every_episode_is_refused(tmp_path):
     root, _ = make_dataset(tmp_path, t=20)
     with pytest.raises(ValueError, match="no chunk"):
         relative_action_stats(root, chunk_size=200)
+
+
+# ── the rotation cap follows the dataset's fps ──────────────────────────
+
+def test_cap_follows_the_declared_fps(tmp_path):
+    """7 deg/frame is 210 deg/s at 30 fps — real wrist motion, kept — and
+    350 deg/s at 50 fps — a glitch, spliced."""
+    root30, _ = make_dataset(tmp_path / "a", fps=30, rot_step_deg=7.0)
+    _, rep30 = relative_action_stats(root30, chunk_size=50)
+    assert rep30["jump_cap_deg"] == pytest.approx(250.0 / 30)
+    assert rep30["n_rot_jumps_spliced"] == 0
+
+    root50, _ = make_dataset(tmp_path / "b", fps=50, rot_step_deg=7.0)
+    _, rep50 = relative_action_stats(root50, chunk_size=50)
+    assert rep50["jump_cap_deg"] == pytest.approx(5.0)
+    assert rep50["n_rot_jumps_spliced"] > 0
+
+
+def test_missing_fps_is_refused(tmp_path):
+    """Without fps there is no way to tell real motion from a glitch."""
+    root, _ = make_dataset(tmp_path)
+    (root / "meta" / "info.json").write_text("{}")
+    with pytest.raises(ValueError, match="fps"):
+        relative_action_stats(root, chunk_size=50)
