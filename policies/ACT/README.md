@@ -4,7 +4,7 @@ Trains [ACT](https://arxiv.org/abs/2304.13705) on Grabette demonstrations with
 chunk-relative actions: every action of a chunk is an offset from the chunk's
 first pose, expressed in that pose's frame
 ([`libs/grabette-chunkrel`](../../libs/grabette-chunkrel)). Stock lerobot
-`0.6.0`, no fork. Standalone uv project (own `uv.lock`):
+`0.6.1`, no fork. Standalone uv project (own `uv.lock`):
 
 ```bash
 cd policies/ACT && uv sync

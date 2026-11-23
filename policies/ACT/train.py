@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
-# dependencies = ["lerobot[training]==0.6.0"]
+# dependencies = ["lerobot[training]==0.6.1"]
 # ///
 """ACT launcher with chunk-relative actions: stock `lerobot-train` plus the
 grabette-chunkrel steps.

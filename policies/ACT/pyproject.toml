@@ -6,7 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     # Same lerobot as the eval client (openarm_gripette_simu[eval]): training
     # and inference must rebuild the same processor pipeline.
-    "lerobot[training]==0.6.0",
+    "lerobot[training]==0.6.1",
     # The chunk-relative steps live here; a trained checkpoint cannot be
     # loaded without importing them.
     "grabette-chunkrel",
