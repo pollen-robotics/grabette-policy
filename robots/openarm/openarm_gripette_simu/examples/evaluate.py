@@ -2176,6 +2176,14 @@ def main():
                 f"Overriding n_action_steps: {policy.config.n_action_steps} -> {args.n_action_steps}"
             )
             policy.config.n_action_steps = args.n_action_steps
+            # A chunk only holds chunk_size actions: asking for more silently
+            # re-plans every chunk_size steps instead.
+            chunk_size = getattr(policy.config, "chunk_size", None)
+            if chunk_size is not None and args.n_action_steps > chunk_size:
+                logger.warning(
+                    f"--n_action_steps {args.n_action_steps} > the checkpoint's chunk_size "
+                    f"{chunk_size}: the policy will re-plan every {chunk_size} steps."
+                )
         policy.to(device)
         policy.eval()
         # The preprocessor's DeviceProcessorStep is restored from the checkpoint's
