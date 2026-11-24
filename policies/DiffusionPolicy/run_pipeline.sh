@@ -56,6 +56,12 @@
 #                         operator holds the gripper CLOSED when idle. Must match
 #                         how the episodes were actually recorded — see
 #                         libs/grabette-dataset-tools/docs/grasp_projection_recording_procedure.md.
+#   --close-at F          --grasp-projection: fire the full close once the human
+#                         closure has covered fraction F of its ramp (e.g. 0.8)
+#                         instead of at the ramp onset — for operators who close
+#                         slowly while still approaching.
+#   --close-stop-speed V  --grasp-projection: or once the hand slows below V m/s
+#                         (e.g. 0.03), whichever comes first.
 #   --projection-repo-id ID
 #                         --grasp-projection: repo_id the converted dataset is
 #                         opened under for its (mandatory) stats pass. Defaults to
@@ -77,7 +83,7 @@ set -euo pipefail
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
 RAW="" RAW_ROOT="" WORK="" PROPRIO="none" MAX_LOST_RUN="" CAMERAS="cam0" SMOOTH_POSES="" DO_QA=1 DO_RESIZE=1
-DO_PROJECTION=0 REST_IS_CLOSED=0 PROJ_REPO_ID=""
+DO_PROJECTION=0 REST_IS_CLOSED=0 PROJ_REPO_ID="" CLOSE_AT="" CLOSE_STOP_SPEED=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -91,6 +97,8 @@ while [[ $# -gt 0 ]]; do
     --no-resize)      DO_RESIZE=0; shift ;;
     --grasp-projection) DO_PROJECTION=1; shift ;;
     --rest-is-closed) REST_IS_CLOSED=1; shift ;;
+    --close-at)       CLOSE_AT="$2"; shift 2 ;;
+    --close-stop-speed) CLOSE_STOP_SPEED="$2"; shift 2 ;;
     --projection-repo-id) PROJ_REPO_ID="$2"; shift 2 ;;
     -h|--help)        usage; exit 0 ;;
     -*)               echo "Unknown option: $1" >&2; exit 1 ;;
@@ -210,6 +218,8 @@ if [[ "$DO_PROJECTION" == 1 ]]; then
   PROJ_ID="local/${BASE}_graspproj"
   PROJ_ROOT="$WORK/graspproj"
   PROJ_EXTRA=(); [[ "$REST_IS_CLOSED" == 1 ]] && PROJ_EXTRA=(--rest_is_closed)
+  [[ -n "$CLOSE_AT" ]] && PROJ_EXTRA+=(--close_at "$CLOSE_AT")
+  [[ -n "$CLOSE_STOP_SPEED" ]] && PROJ_EXTRA+=(--close_stop_speed "$CLOSE_STOP_SPEED")
   # The converter's stats pass opens the dataset through LeRobotDataset. A LOCAL
   # id is deliberate here, and better than the raw input's id in both directions:
   #

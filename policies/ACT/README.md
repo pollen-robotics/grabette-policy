@@ -28,6 +28,13 @@ prints the train command:
 ./run_pipeline.sh simheo/red-cube-blue-box --camera right_cam0 --strip-prefix right_
 ```
 
+`--grasp-projection` re-expresses the gripper as `(strategy, closure)` so the
+policy commands a full close. If the robot then **closes too early** (operators who
+close while still approaching), add `--close-at 0.8 --close-stop-speed 0.03` to
+fire the full close when the hand reaches the object; see
+[When the full close fires](../../libs/grabette-dataset-tools/docs/grasp_projection.md#when-the-full-close-fires).
+`./run_pipeline.sh --help` lists every option.
+
 The stats' rotation cap follows `fps` in `meta/info.json`, so it must be the
 real rate. By hand, write the chunk-relative action stats for the chunk size you will train with:
 

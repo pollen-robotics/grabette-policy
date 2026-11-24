@@ -40,7 +40,12 @@
 #   --no-resize           keep the dataset's image size
 #   --grasp-projection    re-express the gripper channels as (strategy, closure)
 #   --rest-is-closed      --grasp-projection: operator holds the gripper CLOSED when idle
-#   --no-qa               skip the analyze_dataset.py QA step
+#   --close-at F          --grasp-projection: fire the full close once the human closure
+#                         has covered fraction F of its ramp (e.g. 0.8) instead of at the
+#                         ramp onset — for operators who close slowly while approaching
+#   --close-stop-speed V  --grasp-projection: or once the hand slows below V m/s (e.g.
+#                         0.03), whichever comes first
+#   --no-qa              skip the analyze_dataset.py QA step
 #   -h, --help            show this help
 #
 # Example:
@@ -52,6 +57,7 @@ usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
 RAW="" RAW_ROOT="" WORK="" CAMERA="cam0" PREFIX="" CHUNK=50 MAX_LOST_RUN=""
 DO_PROJECTION=0 REST_IS_CLOSED=0 DO_QA=1 IMAGE_SIZE="648x486" DO_RESIZE=1
+CLOSE_AT="" CLOSE_STOP_SPEED=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -65,7 +71,9 @@ while [[ $# -gt 0 ]]; do
     --no-resize)        DO_RESIZE=0; shift ;;
     --grasp-projection) DO_PROJECTION=1; shift ;;
     --rest-is-closed)   REST_IS_CLOSED=1; shift ;;
-    --no-qa)            DO_QA=0; shift ;;
+    --close-at)         CLOSE_AT="$2"; shift 2 ;;
+    --close-stop-speed) CLOSE_STOP_SPEED="$2"; shift 2 ;;
+    --no-qa)           DO_QA=0; shift ;;
     -h|--help)          usage; exit 0 ;;
     -*)                 echo "Unknown option: $1" >&2; exit 1 ;;
     *)                  if [[ -z "$RAW" ]]; then RAW="$1"; shift; else echo "Unexpected arg: $1" >&2; exit 1; fi ;;
@@ -120,6 +128,8 @@ uv run --project "$TOOLS" python -m grabette_dataset_tools.normalize_raw \
 if [[ "$DO_PROJECTION" == 1 ]]; then
   PROJ_ID="local/${BASE}_act_graspproj"; PROJ_ROOT="$WORK/act_graspproj"
   PROJ_EXTRA=(); [[ "$REST_IS_CLOSED" == 1 ]] && PROJ_EXTRA=(--rest_is_closed)
+  [[ -n "$CLOSE_AT" ]] && PROJ_EXTRA+=(--close_at "$CLOSE_AT")
+  [[ -n "$CLOSE_STOP_SPEED" ]] && PROJ_EXTRA+=(--close_stop_speed "$CLOSE_STOP_SPEED")
   echo; echo "==> [3] grasp projection — gripper angles -> (strategy, closure)"
   uv run --project "$TOOLS" python -m grabette_dataset_tools.grasp_projection_convert \
     --src_root "$TRAIN_ROOT" --dst_root "$PROJ_ROOT" --overwrite \

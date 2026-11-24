@@ -54,8 +54,15 @@ Training stays a separate, deliberate command — the script prints the exact
 
 ```bash
 ./run_pipeline.sh <raw_repo_id> [--raw-root DIR] [--proprioception none|relative] \
-                  [--cameras "cam0"|all] [--no-qa] [--no-resize]
+                  [--cameras "cam0"|all] [--no-qa] [--no-resize] \
+                  [--grasp-projection [--rest-is-closed] [--close-at F] [--close-stop-speed V]]
 ```
+
+`--grasp-projection` re-expresses the gripper as `(strategy, closure)` so the
+policy commands a full close. If the robot then **closes too early** (operators who
+close while still approaching), add `--close-at 0.8 --close-stop-speed 0.03`; see
+[When the full close fires](../../libs/grabette-dataset-tools/docs/grasp_projection.md#when-the-full-close-fires).
+`./run_pipeline.sh --help` lists every option.
 
 By default the pipeline keeps **only `cam0`** (the camera the policy trains on) and
 removes any extra recorded streams: an unused stream doubles video-decode cost at

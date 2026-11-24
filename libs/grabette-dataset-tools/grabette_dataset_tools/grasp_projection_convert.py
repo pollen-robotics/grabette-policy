@@ -13,6 +13,11 @@ The two gripper channels are replaced, in place of the raw angles:
                              fingers, at the servo's torque cap
     otherwise  -> passthrough of the closure the human actually used
 
+The full close fires at the onset of the closing ramp by default. For operators
+who close slowly while still approaching, `--close_at` / `--close_stop_speed`
+move it to the grasp itself (see `delay_close_onsets`, and "When the full close
+fires" in docs/grasp_projection.md).
+
 So the ONLY thing this conversion changes is that the grasp becomes a full close.
 Everything else is the demonstration unaltered, which keeps the distribution shift
 as small as it can be.
@@ -99,6 +104,108 @@ logger = logging.getLogger(__name__)
 
 C_CLOSE = 1.0   # every other frame passes the demonstrated closure through
 
+# Label for the frames of a closing ramp BEFORE the delayed full close fires
+# (see `delay_close_onsets`). Anything but "close" passes the observed closure
+# through, so these frames replay the human's own gradual squeeze.
+CLOSING = "closing"
+# Width of the centred moving average applied to the hand speed before the
+# stop test: one 30 fps frame of SLAM jitter must not read as "stopped".
+SPEED_SMOOTH = 5
+
+
+def hand_speed(pos, fps: float) -> np.ndarray:
+    """Per-frame hand speed (m/s) from positions, smoothed over SPEED_SMOOTH frames.
+
+    Frame 0 copies frame 1's step (there is no step before it). The average is
+    normalised by the number of frames actually inside the window, so the ends of
+    the episode are not biased towards zero — which would read as "stopped".
+    """
+    pos = np.asarray(pos, dtype=np.float64)
+    n = len(pos)
+    if n < 2:
+        return np.zeros(n)
+    step = np.linalg.norm(np.diff(pos, axis=0), axis=1) * float(fps)
+    v = np.concatenate([step[:1], step])
+    half = SPEED_SMOOTH // 2
+    csum = np.concatenate([[0.0], np.cumsum(v)])
+    lo = np.clip(np.arange(n) - half, 0, n)
+    hi = np.clip(np.arange(n) + half + 1, 0, n)
+    return (csum[hi] - csum[lo]) / (hi - lo)
+
+
+def delay_close_onsets(
+    labels: list[str],
+    closure: list[float],
+    close_at: float | None = None,
+    speed=None,
+    stop_speed: float | None = None,
+) -> tuple[list[str], list[int]]:
+    """Move the start of each full close from the ramp onset to the grasp itself.
+
+    `segment_grip` fires the close at the START of the closing ramp — right when
+    the human commits. That is correct for operators who close in one quick
+    squeeze once in place, but some close slowly WHILE still approaching: on the
+    put-red-cube dataset (Nov. 2026) the ramp onset came a median 0.77 s and
+    8.4 cm before the hand stopped on the cube, at 0.20 m/s. A servo commanded to
+    c = 1 there closes at its own speed, far faster than the hand did, and shuts
+    the fingers before the object is between them.
+
+    For every span of "close" frames that starts after a non-close frame, the full
+    close is moved to the EARLIEST of:
+
+      - `close_at`: the first frame where the observed closure has covered this
+        fraction of the span's rise (from its value at the onset to its maximum
+        within the span);
+      - `stop_speed`: the first frame where the hand speed drops below this
+        value (m/s).
+
+    Using the earlier of the two is deliberate: the fraction alone sometimes fires
+    late, when the operator keeps squeezing during transport; the stop alone never
+    fires in episodes where the hand does not pause. Frames in between are
+    relabelled CLOSING, so the action replays the human's own closure there.
+
+    A span starting at frame 0 (rest-closed convention, idle hand) is left alone:
+    there is no ramp to delay. Returns the new labels and the delay applied to
+    each delayed span, in frames.
+    """
+    labels = list(labels)
+    if close_at is None and stop_speed is None:
+        return labels, []
+    if close_at is not None and not 0.0 < close_at <= 1.0:
+        raise ValueError(f"close_at must be in (0, 1], got {close_at}")
+    if stop_speed is not None:
+        if speed is None:
+            raise ValueError("stop_speed needs the hand speed (positions + fps)")
+        if len(speed) != len(labels):
+            raise ValueError(f"speed has {len(speed)} frames, labels {len(labels)}")
+    c = np.asarray(closure, dtype=np.float64)
+    n = len(labels)
+    delays = []
+    t0 = 1
+    while t0 < n:
+        if labels[t0] != "close" or labels[t0 - 1] == "close":
+            t0 += 1
+            continue
+        t1 = t0
+        while t1 < n and labels[t1] == "close":
+            t1 += 1
+        candidates = []
+        if close_at is not None:
+            lo, hi = c[t0], c[t0:t1].max()
+            reached = np.nonzero(c[t0:t1] >= lo + close_at * (hi - lo))[0]
+            candidates.append(t0 + int(reached[0]))   # the maximum always qualifies
+        if stop_speed is not None:
+            slow = np.nonzero(np.asarray(speed[t0:t1]) < stop_speed)[0]
+            if len(slow):
+                candidates.append(t0 + int(slow[0]))
+        trigger = min(candidates) if candidates else t0
+        for i in range(t0, trigger):
+            labels[i] = CLOSING
+        if trigger > t0:
+            delays.append(trigger - t0)
+        t0 = t1
+    return labels, delays
+
 
 def _gripper_columns(names: list[str] | None, dim: int) -> tuple[int, int]:
     """Locate (proximal, distal) BY NAME. Layouts differ between dataset eras —
@@ -116,13 +223,42 @@ def _gripper_columns(names: list[str] | None, dim: int) -> tuple[int, int]:
     return dim - 2, dim - 1
 
 
+def _pose_columns(names: list[str] | None) -> tuple[list[int], bool] | None:
+    """Locate the hand position channels BY NAME: ([ix, iy, iz], is_delta).
+
+    Absolute layouts name them x/y/z (or right_x...), delta layouts dx/dy/dz;
+    deltas are integrated by the caller. None when neither is present.
+    """
+    if not names:
+        return None
+    low = [str(n).lower() for n in names]
+    for prefix, is_delta in (("", False), ("d", True)):
+        idx = []
+        for axis in "xyz":
+            key = prefix + axis
+            idx.append(next((i for i, n in enumerate(low)
+                             if n == key or n.endswith("_" + key)), None))
+        if None not in idx:
+            return idx, is_delta
+    return None
+
+
 def convert_episode(
     prox: list[float],
     dist: list[float],
     gp: GraspProjection,
     rest_is_closed: bool,
+    close_at: float | None = None,
+    stop_speed: float | None = None,
+    pos=None,
+    fps: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
-    """One episode -> (action gripper pairs, state gripper pairs, report)."""
+    """One episode -> (action gripper pairs, state gripper pairs, report).
+
+    `close_at` / `stop_speed` delay each full close from the ramp onset to the
+    grasp (see `delay_close_onsets`); `stop_speed` needs `pos` (N x 3, metres)
+    and `fps`. Both None (the default) keeps the original behaviour.
+    """
     prox, flipped_p = normalize_closing_sign(prox)
     dist, flipped_d = normalize_closing_sign(dist)
 
@@ -137,6 +273,16 @@ def convert_episode(
 
     labels, events = segment_grip(c_obs, rest_is_closed=rest_is_closed)
 
+    speed = None
+    if stop_speed is not None:
+        if pos is None or fps is None:
+            raise ValueError("stop_speed needs the hand positions and the fps")
+        if len(pos) != len(c_obs):
+            raise ValueError(f"pos has {len(pos)} frames, gripper {len(c_obs)}")
+        speed = hand_speed(pos, fps)
+    labels, delays = delay_close_onsets(labels, c_obs, close_at=close_at,
+                                        speed=speed, stop_speed=stop_speed)
+
     # Only the grasp is rewritten; approach, open and rest pass through, so the
     # decoded command matches the demonstration everywhere except where the
     # under-close happens.
@@ -148,16 +294,22 @@ def convert_episode(
     # decode(s, 1.0), the target then wanders — observed swinging between 57 and
     # 93 degrees of proximal mid-grasp, which would make a servo already stalled
     # on the object shuffle. A grasp has ONE shape, so it is taken from the pose
-    # the hand ends in (the plateau) and held from the onset.
+    # the hand ends in (the plateau) and held from the onset — or from the
+    # delayed full close, when one was applied: before it the gripper replays
+    # the human's own pose, strategy included.
     s_cmd = list(s_obs)
     for ev in (e for e in events if e.kind == "close"):
         tail = s_obs[max(ev.end - 5, ev.onset):ev.end + 1]
         if not tail:
             continue
         grasp_s = sorted(tail)[len(tail) // 2]
-        end = next((i for i in range(ev.onset, len(labels)) if labels[i] != "close"),
+        start = next((i for i in range(ev.onset, len(labels)) if labels[i] == "close"),
+                     None)
+        if start is None:
+            continue
+        end = next((i for i in range(start, len(labels)) if labels[i] != "close"),
                    len(labels))
-        for i in range(ev.onset, end):
+        for i in range(start, end):
             s_cmd[i] = grasp_s
     return (
         np.asarray(list(zip(s_cmd, c_target)), dtype=np.float32),
@@ -167,6 +319,7 @@ def convert_episode(
             "n_open": sum(1 for e in events if e.kind == "open"),
             "sign_flipped": bool(flipped_p or flipped_d),
             "frac_close": labels.count("close") / max(len(labels), 1),
+            "close_delays": delays,
         },
     )
 
@@ -197,16 +350,23 @@ def _drop_stale_action_stats(dst_root: Path) -> None:
     logger.info("Dropped stale action-stats provenance: %s", ", ".join(dropped))
 
 
-def _write_sidecar(dst_root: Path, gp: GraspProjection, src_root: Path) -> None:
+def _write_sidecar(dst_root: Path, gp: GraspProjection, src_root: Path,
+                   close_trigger: dict | None = None) -> None:
     """Record which projection built this dataset, and from what.
 
     Written every conversion, unconditionally: a projected dataset with no record
     of its calibration is the ambiguity this file exists to remove.
+
+    `close_trigger` records when the full close fires, since it changes the
+    training targets as much as the calibration does. It is always written —
+    null fields mean the original ramp-onset behaviour.
     """
     path = dst_root / PROJECTION_SIDECAR
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(
-        gp.to_metadata(source_root=str(src_root)), indent=2) + "\n")
+    extra = {"source_root": str(src_root)}
+    if close_trigger is not None:
+        extra["close_trigger"] = close_trigger
+    path.write_text(json.dumps(gp.to_metadata(**extra), indent=2) + "\n")
     logger.info("Wrote %s", path)
 
 
@@ -269,10 +429,28 @@ def convert_dataset(
     rest_is_closed: bool = False,
     overwrite: bool = False,
     stats_repo_id: str | None = None,
+    close_at: float | None = None,
+    stop_speed: float | None = None,
 ) -> dict:
-    """Copy the dataset and rewrite its gripper channels. Returns a report."""
+    """Copy the dataset and rewrite its gripper channels. Returns a report.
+
+    `close_at` / `stop_speed`: see `delay_close_onsets`. Checked before anything
+    is copied, so a bad value or a dataset without position channels fails fast.
+    """
     src_root = Path(src_root)
     dst_root = Path(dst_root)
+    if close_at is not None and not 0.0 < close_at <= 1.0:
+        raise ValueError(f"close_at must be in (0, 1], got {close_at}")
+    if stop_speed is not None and stop_speed <= 0.0:
+        raise ValueError(f"stop_speed must be > 0 m/s, got {stop_speed}")
+    src_info = json.loads((src_root / "meta" / "info.json").read_text())
+    pose_cols = None
+    if stop_speed is not None:
+        pose_cols = _pose_columns(src_info["features"]["action"].get("names"))
+        if pose_cols is None:
+            raise ValueError("stop_speed needs position channels in `action` "
+                             "(x/y/z or dx/dy/dz); none found by name")
+    fps = float(src_info["fps"])
     if dst_root.exists():
         if not overwrite:
             raise FileExistsError(f"Destination exists: {dst_root}. Pass --overwrite.")
@@ -321,8 +499,17 @@ def convert_dataset(
 
         for ep in np.unique(eps):
             m = eps == ep
+            pos = None
+            if pose_cols is not None:
+                idx, is_delta = pose_cols
+                pos = actions[m][:, idx].astype(np.float64)
+                if is_delta:
+                    # Per-step deltas: integrate. The speed only uses differences,
+                    # so the unknown starting point does not matter.
+                    pos = np.cumsum(pos, axis=0)
             a_pair, s_pair, rep = convert_episode(
-                actions[m, a_ip].tolist(), actions[m, a_id].tolist(), gp, rest_is_closed
+                actions[m, a_ip].tolist(), actions[m, a_id].tolist(), gp, rest_is_closed,
+                close_at=close_at, stop_speed=stop_speed, pos=pos, fps=fps,
             )
             actions[m, a_ip], actions[m, a_id] = a_pair[:, 0], a_pair[:, 1]
             states[m, s_ip], states[m, s_id] = s_pair[:, 0], s_pair[:, 1]
@@ -365,7 +552,8 @@ def convert_dataset(
         logger.info("Stats recomputed")
 
     _drop_stale_action_stats(dst_root)
-    _write_sidecar(dst_root, gp, src_root)
+    _write_sidecar(dst_root, gp, src_root, close_trigger={
+        "close_at": close_at, "stop_speed_m_s": stop_speed})
     _write_card(dst_root, repo_id=stats_repo_id)
 
     # WARN, don't refuse. A converted dataset that only ever lives locally for an
@@ -397,6 +585,7 @@ def convert_dataset(
         "with_open": sum(1 for r in reports if r["n_open"] > 0),
         "sign_flipped": sum(1 for r in reports if r["sign_flipped"]),
         "frac_close_median": float(np.median([r["frac_close"] for r in reports])),
+        "close_delays_s": [d / fps for r in reports for d in r["close_delays"]],
         "per_episode": reports,
     }
 
@@ -410,6 +599,14 @@ def convert_dataset(
               help="Recording convention where the operator holds the gripper CLOSED "
                    "when idle. Then rest and grasp are the same command and only "
                    "opens are detected. Use for datasets recorded that way.")
+@click.option("--close_at", type=click.FloatRange(0.0, 1.0, min_open=True), default=None,
+              help="Delay the full close until the human closure has covered this "
+                   "fraction of its rise (e.g. 0.8). Default: fire at the ramp onset. "
+                   "For operators who close slowly while still approaching.")
+@click.option("--close_stop_speed", type=click.FloatRange(0.0, min_open=True), default=None,
+              help="Also fire the full close once the hand slows below this speed "
+                   "(m/s, e.g. 0.03), whichever comes first with --close_at. Needs "
+                   "x/y/z or dx/dy/dz channels in `action`.")
 @click.option("--overwrite", is_flag=True, help="Replace the destination if it exists.")
 @click.option("--recompute_stats/--no_recompute_stats", default=True,
               help="Recompute normalisation stats. The gripper channels change "
@@ -423,12 +620,14 @@ def convert_dataset(
                    "the SOURCE dataset's Hub id — opening the converted dataset "
                    "under it has re-downloaded source parquet over the converted "
                    "files, silently reverting the conversion.")
-def main(src_root, dst_root, rest_is_closed, overwrite, recompute_stats, repo_id):
+def main(src_root, dst_root, rest_is_closed, close_at, close_stop_speed, overwrite,
+         recompute_stats, repo_id):
     """Re-express a dataset's gripper channels as (strategy, commanded closure)."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     report = convert_dataset(Path(src_root), Path(dst_root),
                             rest_is_closed=rest_is_closed, overwrite=overwrite,
-                            stats_repo_id=repo_id if recompute_stats else None)
+                            stats_repo_id=repo_id if recompute_stats else None,
+                            close_at=close_at, stop_speed=close_stop_speed)
 
     n = report["episodes"]
     click.echo("")
@@ -441,6 +640,10 @@ def main(src_root, dst_root, rest_is_closed, overwrite, recompute_stats, repo_id
     click.echo(f"  sign-flipped:      {report['sign_flipped']}")
     click.echo(f"  median frames labelled close: "
                f"{100 * report['frac_close_median']:.0f}%")
+    if close_at is not None or close_stop_speed is not None:
+        d = report["close_delays_s"]
+        click.echo(f"  full close delayed: {len(d)} close(s)"
+                   + (f", by {np.median(d):.2f} s median (max {max(d):.2f} s)" if d else ""))
 
     click.echo("")
     click.echo(f"Done: {dst_root}")

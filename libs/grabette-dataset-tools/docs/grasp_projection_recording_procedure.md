@@ -84,6 +84,13 @@ Natural use is the goal; these only make the events cleaner.
   the ramp onset crisp.
 - **Close in one deliberate motion** rather than creeping in stages. Small
   hesitations are merged automatically; a slow crawl looks like drift.
+- **Close once the object is between the fingers, not while still approaching.**
+  The full close fires at the start of the closing ramp, and the robot's servo
+  closes much faster than a hand. A close that starts during the approach makes
+  the robot shut its fingers before it reaches the object (seen on
+  put-red-cube, Nov. 2026: 8.4 cm early in median). If a dataset was already
+  recorded that way, convert it with `--close_at 0.8 --close_stop_speed 0.03`;
+  see [When the full close fires](grasp_projection.md#when-the-full-close-fires).
 - **Open only as wide as needed** — natural anyway, and it means the opening
   posture carries information about the coming grasp.
 - **Don't idly adjust the fingers while transporting.** A held grasp should stay
