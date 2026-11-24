@@ -21,6 +21,7 @@ import logging
 import math
 import threading
 import time
+from collections import deque
 
 import cv2
 import grpc
@@ -476,7 +477,10 @@ def parse_args():
                         "ticks executes only chunk heads and re-rolls the decision, so the "
                         "close stays forever in the receding tail. Committing lets the "
                         "fingers actually move; the state feedback then carries the close. "
-                        "Complementary to --latch_close. Suggested: 0.55.")
+                        "Complementary to --latch_close. Suggested: 0.55. Also works in "
+                        "sync mode (local policies with predict_action_chunk, e.g. ACT): "
+                        "a chunk that crosses THRESH within its first --n_action_steps "
+                        "actions is queued in full instead of just those.")
     p.add_argument("--async_exec", action="store_true",
                    help="Async execution: a sender thread streams actions to the arm at "
                         "EXACTLY --fps (the demo clock) while inference replans in "
@@ -1255,6 +1259,7 @@ def run_episode(
     grip_ref=(0.0, 0.0),
     grip_torque_limit=0.0,
     latch_close=None,
+    commit_close=None,
     grip_assist=None,
     assist_log=None,
     grasp_projection=None,
@@ -1500,6 +1505,31 @@ def run_episode(
                             # About to replan: the next action opens a new chunk,
                             # measured from a new reference pose.
                             chunk_relative.reset()
+                    if commit_close is not None:
+                        q = policy_action_queue(policy)
+                        if q is not None and len(q) == 0:
+                            # Close-commit (see run_episode_async): fill the queue
+                            # ourselves, with the WHOLE chunk when its gripper
+                            # crosses the threshold within the n_action_steps we
+                            # would execute anyway, so the next replan comes after
+                            # the close instead of cancelling it. Unlike async,
+                            # only that head counts: ACT always plans a close in
+                            # its chunk's tail, so a whole-chunk trigger fired on
+                            # the very first chunk (real arm, 2026-11-24) and
+                            # closed blind from the start image.
+                            with torch.no_grad():
+                                full = policy.predict_action_chunk(batch)
+                            n_exec = min(policy.config.n_action_steps, full.shape[1])
+                            commit = any(
+                                float(postprocessor(full[:, i]).squeeze(0).cpu().numpy()[-2:].max())
+                                > commit_close for i in range(n_exec))
+                            keep = full.shape[1] if commit else n_exec
+                            # A new deque: lerobot caps the queue at n_action_steps.
+                            policy._action_queue = deque(full[:, :keep].transpose(0, 1))
+                            if commit:
+                                print(f"CLOSE COMMIT at step {step}: chunk crosses "
+                                      f"{commit_close:.2f}, executing all {keep} actions",
+                                      flush=True)
                     with torch.no_grad():
                         a = policy.select_action(batch)
                     a = postprocessor(a)
@@ -1995,6 +2025,8 @@ def main():
     remote = args.policy_addr is not None
     if remote and args.async_exec:
         raise SystemExit("--policy_addr supports sync mode only (not --async_exec).")
+    if remote and args.commit_close is not None:
+        raise SystemExit("--commit_close needs a local policy (not --policy_addr).")
 
     # Grasp projection: does this policy emit (strategy, closure) or angles?
     # Getting this wrong is silent in both directions — a closure of 1.0 sent
@@ -2165,6 +2197,10 @@ def main():
         logger.info(f"Loading policy from {args.checkpoint}")
         policy = _load_policy_any(args.checkpoint)
         logger.info(f"Loaded policy type: {policy.config.type}")
+        if (args.commit_close is not None and not args.async_exec
+                and not (hasattr(policy, "predict_action_chunk") and hasattr(policy, "_action_queue"))):
+            raise SystemExit(f"--commit_close in sync mode needs a policy with predict_action_chunk "
+                             f"and _action_queue (e.g. ACT); {policy.config.type} lacks them.")
         # Optional re-planning-cadence override. Smaller n_action_steps re-infers
         # more often (tighter closed loop), which matters a lot for policies that
         # drift off-distribution during open-loop chunk execution — ACT in
@@ -2435,6 +2471,7 @@ def main():
             grip_ref=tuple(args.start_gripper),
             grip_torque_limit=args.grip_torque_limit,
             latch_close=args.latch_close,
+            commit_close=args.commit_close,
             grip_assist=assist,
             grasp_projection=projection,
             chunk_relative=chunk_relative,
