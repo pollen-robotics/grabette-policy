@@ -21,6 +21,7 @@ openarm_gripette/
     ├── log_motor_health.py          # passive fault/temperature logger (RX-only, run alongside sessions)
     ├── _torque_guard.py             # shared Ctrl+C/crash handler: torque off on abort
     ├── reset_arm.py                 # smooth interpolation to home
+    ├── plan_startup_path.py         # table-safe hanging <-> elbow-90 waypoints for reset_arm.py
     ├── set_arm_pose.py              # absolute-target test
     ├── set_gripper_pose.py          # gripette gRPC test
     ├── view_camera.py               # gripette camera stream test
