@@ -70,7 +70,8 @@ from grabette_dataset_tools.grasp_projection import GraspProjection, clamp_to_co
 # never crashes the eval.
 _DEBUG_GUI = None       # None = untried, True = window works, False = headless
 _DEBUG_N = 0
-_DEBUG_DIR = _Path("eval_debug_frames")
+# One sub-folder per eval run, so a new run never overwrites an older one's frames.
+_DEBUG_DIR = _Path("eval_debug_frames") / time.strftime("%Y-%m-%d_%H%M%S")
 
 
 def debug_display(img_bgr):
@@ -84,7 +85,7 @@ def debug_display(img_bgr):
             return
         except cv2.error:
             _DEBUG_GUI = False
-            _DEBUG_DIR.mkdir(exist_ok=True)
+            _DEBUG_DIR.mkdir(parents=True, exist_ok=True)
             print(f"[--debug] OpenCV has no GUI (headless build); saving frames "
                   f"to {_DEBUG_DIR}/ instead of a live window.", flush=True)
     cv2.imwrite(str(_DEBUG_DIR / f"frame_{_DEBUG_N:05d}.png"), img_bgr)
@@ -2175,6 +2176,14 @@ def main():
                 f"Overriding n_action_steps: {policy.config.n_action_steps} -> {args.n_action_steps}"
             )
             policy.config.n_action_steps = args.n_action_steps
+            # A chunk only holds chunk_size actions: asking for more silently
+            # re-plans every chunk_size steps instead.
+            chunk_size = getattr(policy.config, "chunk_size", None)
+            if chunk_size is not None and args.n_action_steps > chunk_size:
+                logger.warning(
+                    f"--n_action_steps {args.n_action_steps} > the checkpoint's chunk_size "
+                    f"{chunk_size}: the policy will re-plan every {chunk_size} steps."
+                )
         policy.to(device)
         policy.eval()
         # The preprocessor's DeviceProcessorStep is restored from the checkpoint's
