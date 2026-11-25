@@ -33,7 +33,7 @@ class FakeFlowPolicy:
         pass
 
     def predict_action_chunk(self, batch, inference_delay, prev_chunk_left_over):
-        self.calls.append({"delay": inference_delay, "left_over": prev_chunk_left_over})
+        self.calls.append({"batch": batch, "delay": inference_delay, "left_over": prev_chunk_left_over})
         time.sleep(INFER_S)
         chunk = torch.zeros(1, CHUNK, 11)
         chunk[0, :, 0] = len(self.calls) - 1
@@ -68,6 +68,27 @@ def test_rtc_engine_drops_actions_executed_during_inference():
         first = next(((c, i) for c, i in executed if c == k), None)
         if first is not None:
             assert first == (k, engine.dropped[k]) and engine.dropped[k] > 0
+
+
+def test_rtc_engine_feeds_mem_history_every_tick():
+    policy = FakeFlowPolicy()
+    policy.config.use_visual_memory = True
+    recorded = []
+    policy._stack_inference_memory = lambda b: recorded.append(b) or {"history_len": len(recorded)}
+    engine = rollout.RTCEngine(policy, lambda b: b, lambda t: t, rollout.RTCConfig(execution_horizon=5),
+                               fps=1 / DT, queue_threshold=CHUNK)
+    engine.start()
+    try:
+        for tick in range(20):
+            engine.notify_observation({"tick": tick})
+            time.sleep(DT)
+    finally:
+        engine.stop()
+
+    # memory_stride counts frames: one record per tick, whatever the inference rate.
+    assert [b["tick"] for b in recorded] == list(range(20))
+    assert 0 < len(policy.calls) < 20
+    assert all("history_len" in c["batch"] for c in policy.calls)
 
 
 def test_rtc_engine_refuses_non_flow_policies():

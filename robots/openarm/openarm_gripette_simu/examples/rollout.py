@@ -89,6 +89,8 @@ class RTCEngine:
         policy.init_rtc_processor()
         self.policy, self.pre, self.post = policy, preprocessor, postprocessor
         self.rtc_config = rtc_config
+        self.memory = getattr(policy.config, "use_visual_memory", False) or getattr(
+            policy.config, "use_proprioceptive_memory", False)
         self.dt = 1.0 / fps
         self.queue_threshold = queue_threshold
         self._lock = threading.Lock()
@@ -110,6 +112,12 @@ class RTCEngine:
         self._thread.join(timeout=5.0)
 
     def notify_observation(self, batch):
+        if self.memory:
+            # The MEM history advances once per policy call and memory_stride counts
+            # dataset frames, so it must be fed every tick, not once per inference.
+            # The inference thread then receives the stacked history as is.
+            with torch.no_grad():
+                batch = self.policy._stack_inference_memory(self.pre(batch))
         with self._lock:
             self._batch = batch
 
@@ -139,7 +147,7 @@ class RTCEngine:
                 latency = self.latency.max()
                 with torch.no_grad():
                     chunk = self.policy.predict_action_chunk(
-                        self.pre(batch),
+                        batch if self.memory else self.pre(batch),
                         inference_delay=math.ceil(latency / self.dt) if latency else 0,
                         prev_chunk_left_over=self.queue.get_left_over(),
                     )
