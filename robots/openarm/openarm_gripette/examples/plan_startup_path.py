@@ -2,8 +2,11 @@
 with a table in front of the arm. Offline: prints reset_arm.py command lines,
 never talks to the arm.
 
-Manipulation pose: elbow at 90 deg, every other joint at 0 (forearm horizontal,
-pointing at the table). Hanging pose: all joints at 0.
+Manipulation pose: shoulder pitched back, elbow and wrist pitch bent so the
+gripper is level and pointing at the table, its centre ~10 cm in front of and
+~27 cm below the shoulder axis. Pulled back this far, the gripper has more room
+to move forward over the table, while shoulder pitch (-59, stop -80) and wrist
+pitch (46, stop 90) keep some travel. Hanging pose: all joints at 0.
 
 THE PATH
 --------
@@ -13,13 +16,16 @@ is. Instead the arm goes BACKWARDS first, away from the table (each hop is one
 ArmService.Reset, a straight joint-space line):
 
   1. shoulder pitch -> -BACK      the straight arm swings back, away from the table
-  2. elbow -> TUCK                the forearm folds up against the upper arm
-  3. shoulder pitch -> 0          the tucked arm swings forward, gripper high
-  4. elbow -> 90                  the forearm comes DOWN onto the manipulation
+  2. elbow -> TUCK, wrist pitch   the forearm folds up against the upper arm,
+     -> MANIP                      the gripper tilts back
+  3. shoulder pitch -> MANIP      the tucked arm swings forward, gripper high
+  4. elbow -> MANIP               the forearm comes DOWN onto the manipulation
                                    pose, from above the table
 
-Folding the elbow straight to 90 at step 2 (no tuck) is worse: step 3 then
+Folding the elbow straight to its final angle at step 2 (no tuck) is worse: step 3 then
 swings the gripper forward and UP from below the table top, into its edge.
+Leaving the wrist straight while tucked is worse too: at step 3 the fingertips
+point forward, at the table edge.
 Shoulder pitch cannot go further back than -80 deg (joint limit), and the elbow
 limit is 140 deg, so both are kept 5 deg short of their stops.
 
@@ -49,7 +55,7 @@ PROFILE_HALF_WIDTH = 0.03  # the vertical profile is 60x60 mm, centred on x = 0
 TABLE_DEPTH, TABLE_HALF_WIDTH = 1.0, 1.0  # assumed: deep and wide (worst case)
 
 HANG_DEG = [0.0] * 7
-MANIP_DEG = [0.0, 0.0, 0.0, 90.0, 0.0, 0.0, 0.0]
+MANIP_DEG = [-59.0, 0.0, 0.0, 103.0, 0.0, 0.0, 46.0]
 
 
 def parse_args():
@@ -133,8 +139,8 @@ def main():
           f"manipulation pose: {1000 * check.distance(np.radians(MANIP_DEG)):5.0f} mm")
 
     back = [-args.back_deg, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    back_tucked = [-args.back_deg, 0.0, 0.0, args.tuck_deg, 0.0, 0.0, 0.0]
-    tucked = [0.0, 0.0, 0.0, args.tuck_deg, 0.0, 0.0, 0.0]
+    back_tucked = [-args.back_deg, 0.0, 0.0, args.tuck_deg, 0.0, 0.0, MANIP_DEG[6]]
+    tucked = [MANIP_DEG[0], 0.0, 0.0, args.tuck_deg, 0.0, 0.0, MANIP_DEG[6]]
     hops = [("swing arm back", HANG_DEG, back),
             ("tuck elbow", back, back_tucked),
             ("swing tucked arm forward", back_tucked, tucked),
