@@ -193,24 +193,23 @@ Two more operational notes:
   `push_to_hub` to *true*, so without either that flag or a `--policy.repo_id`
   the job dies in `cfg.validate()` with *"'repo_id' argument missing"* — before
   training starts, and after you have already paid for the GPU to boot.
-- **Enable wandb, or the loss curve is gone.** With `wandb.enable=false`
+- **Enable Trackio, or the loss curve is gone.** With `trackio.enable=false`
   (lerobot's default) the run logs only to stdout. HF Jobs logs are not
   retrievable after the job leaves the queue (`hf jobs logs <id>` → 404), and
   nothing survives the container beside the pushed checkpoints. We finished a 12 h /
   $30 run whose training and eval losses are **unrecoverable** — so the recipe's
   own success criterion (eval loss descending, reference 0.755 → 0.447) could not
-  be checked at all. Pass `--wandb.enable=true --wandb.project=<project>` with a
-  `WANDB_API_KEY` secret (`-s WANDB_API_KEY`), or accept that the only evidence
-  you will have is the offline gates below. `train.py` pins `wandb<0.29`
-  because 0.29 removed `Run.get_url()`, which lerobot's `wandb_utils.py` still
-  calls — unpinned, enabling wandb is what *causes* the crash, on exactly the
-  runs you wanted the curve for.
+  be checked at all. Pass `--trackio.enable=true --trackio.project=<project>
+  --trackio.space_id=<user>/<space>`: lerobot 0.7 replaced wandb with Trackio,
+  and without `space_id` the run goes to a local database that vanishes with
+  the container (or the cluster node). Otherwise the only evidence you will
+  have is the offline gates below.
 
   Note also that `hf jobs logs <id>` truncates to a tail once a job has been
   finished for a while: a 12 h run fetched two days later came back as 55 KB
   (the last two evals only), while the same-length run fetched the morning it
   finished came back as 1.6 MB with all 50 evals. Pull the log promptly if you
-  want it, and treat wandb as the only durable record.
+  want it, and treat the Trackio Space as the only durable record.
 
 Recipe rationale (matched to the verified `lerobot/pi05-libero` fine-tune):
 

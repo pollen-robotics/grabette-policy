@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "lerobot[dataset] @ git+https://github.com/huggingface/lerobot@e40b58a8dfa9e7b86918c374791599d070518d11",
+#   "lerobot[dataset]==0.7.0",
 #   "av",
 #   "ficelle-client[iroh] @ git+https://github.com/SteveNguyen/Ficelle#subdirectory=client",
 # ]

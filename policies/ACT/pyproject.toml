@@ -4,8 +4,9 @@ version = "0.1.0"
 description = "ACT training with chunk-relative actions for Grabette demonstrations, on stock upstream lerobot."
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    # Same lerobot as the eval client (openarm_gripette_simu[eval]): training
-    # and inference must rebuild the same processor pipeline.
+    # Training and inference must rebuild the same processor pipeline. The eval
+    # client (openarm_gripette_simu[eval]) is on lerobot 0.7.0: check that a
+    # checkpoint from this version still loads there before relying on it.
     "lerobot[training]==0.6.1",
     # The chunk-relative steps live here; a trained checkpoint cannot be
     # loaded without importing them.

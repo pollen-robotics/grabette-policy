@@ -13,8 +13,9 @@ dependencies = [
     # against this commit; the Ficelle server pins the same one. Bump all
     # of them together, deliberately. (Also: must be lerobot main, not a
     # 0.5.x/0.6.x release — see pi0fast/README.md for the base-checkpoint
-    # consistency story that set this rule.)
-    "lerobot[pi,dataset] @ git+https://github.com/huggingface/lerobot@e40b58a8dfa9e7b86918c374791599d070518d11",
+    # consistency story that set this rule; 0.7.0 contains that main commit,
+    # e40b58a8.) The training extra brings Trackio, which replaced wandb in 0.7.
+    "lerobot[pi,training]==0.7.0",
     "scipy>=1.10",
     "sentencepiece",
     "num2words",
@@ -30,9 +31,6 @@ dependencies = [
     # fails after loading the checkpoint and computing the first frame.
     "grabette-attention[png]",
 ]
-
-[project.optional-dependencies]
-wandb = ["wandb"]
 
 [tool.uv.sources]
 # From the monorepo, not PyPI. The HF Jobs training run installs the same package
