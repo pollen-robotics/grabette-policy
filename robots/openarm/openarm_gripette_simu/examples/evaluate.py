@@ -543,6 +543,13 @@ def parse_args():
                         "gripper, move the arm back to --home_joints (or the server's "
                         "built-in home) through the server's Reset. Straight joint-space "
                         "ramp: make sure the path is clear.")
+    p.add_argument("--home_lift", type=float, default=0.05, metavar="M",
+                   help="Before every Reset to home (episode start, --return_home), "
+                        "lift the gripper straight up by this much (m), so the "
+                        "straight joint-space ramp starts clear of the table. Adds "
+                        "~4 s per return on the real arm (a re-sync Reset in place, "
+                        "then the lift). Best-effort: if the server refuses the lift, "
+                        "Reset runs from where the arm is. 0 = no lift.")
     p.add_argument("--grip_gain", type=float, default=1.0,
                    help="Actuator calibration for the gripper: scale the model's gripper "
                         "commands around the open reference (--start_gripper), so open "
@@ -954,6 +961,54 @@ def capture_start_pose(arm_stub, arm_pb2):
     start_r6d = np.array(list(arm_state.r6d), dtype=np.float32)
     start_rot = rotation_6d_to_rotation_matrix_numpy(start_r6d.reshape(1, 6))[0]
     return start_pos, start_rot
+
+
+LIFT_STEP_M = 0.005  # per SendCartesianDelta, one per control tick
+LIFT_SETTLE_S = 0.5  # let the interpolator reach the lifted pose before Reset
+
+
+def lift_then_reset(arm_stub, arm_pb2, home_joints, lift_m, fps):
+    """Lift the gripper straight up by lift_m, then Reset to home_joints (None =
+    the server's home).
+
+    Reset is a straight joint-space ramp from wherever the episode ended, which
+    can drag the gripper along the table. Starting it higher keeps it clear.
+    Best-effort: a refused lift only warns, and the Reset runs anyway, as it
+    did before the lift existed.
+    """
+    if lift_m > 0:
+        # Re-sync first: a Reset to the measured joints (no motion, ~3 s on the
+        # real server). The lift moves the server's integrated TARGET, which
+        # after an episode pressing on the table sits below the gripper (up to
+        # the server's target-lead cap, 50 mm); lifting it would first only
+        # undo that lead. The Reset also clears a motion freeze (IK-jump
+        # watchdog), which would otherwise refuse the lift.
+        state = arm_stub.GetArmState(arm_pb2.GetArmStateRequest())
+        resync = arm_stub.Reset(arm_pb2.ResetRequest(joint_positions=list(state.joint_positions)))
+        if not resync.success:
+            logger.warning(f"Re-sync before the lift failed ({resync.error}): no lift")
+            lift_m = 0.0
+    if lift_m > 0:
+        state = arm_stub.GetArmState(arm_pb2.GetArmStateRequest())
+        rot = rotation_6d_to_rotation_matrix_numpy(np.array(list(state.r6d)).reshape(1, 6))[0]
+        # Deltas are camera-local (the server applies R @ delta): express
+        # world-up in the camera frame.
+        up = rot.T @ np.array([0.0, 0.0, 1.0])
+        no_rot = rotation_matrix_to_rotation_6d_numpy(np.eye(3)[None])[0].tolist()
+        n = math.ceil(lift_m / LIFT_STEP_M)
+        dp = up * lift_m / n
+        for _ in range(n):
+            resp = arm_stub.SendCartesianDelta(arm_pb2.CartesianDelta(
+                dx=float(dp[0]), dy=float(dp[1]), dz=float(dp[2]), dr6d=no_rot))
+            if not resp.success:
+                logger.warning(f"Lift before Reset refused ({resp.error}): resetting from here")
+                break
+            time.sleep(1.0 / fps)
+        time.sleep(LIFT_SETTLE_S)
+    req = arm_pb2.ResetRequest()
+    if home_joints is not None:
+        req.joint_positions.extend(home_joints)
+    return arm_stub.Reset(req)
 
 
 def compute_relative_state(arm_state, gripper_joints, start_pos, start_rot):
@@ -2335,10 +2390,8 @@ def main():
             # Reset blocks until the ramp is done, so it must also run before
             # the channels close.
             try:
-                req = arm_pb2.ResetRequest()
-                if args.home_joints is not None:
-                    req.joint_positions.extend(args.home_joints)
-                resp = arm_stub.Reset(req)
+                resp = lift_then_reset(arm_stub, arm_pb2, args.home_joints,
+                                       args.home_lift, args.fps)
                 if resp.success:
                     print("arm returned home on exit", flush=True)
                 else:
@@ -2369,10 +2422,8 @@ def main():
         if args.no_reset:
             logger.info("--no_reset: starting from the arm's current pose")
         else:
-            reset_req = arm_pb2.ResetRequest()
-            if args.home_joints is not None:
-                reset_req.joint_positions.extend(args.home_joints)
-            reset_resp = arm_stub.Reset(reset_req)
+            reset_resp = lift_then_reset(arm_stub, arm_pb2, args.home_joints,
+                                         args.home_lift, args.fps)
             if not reset_resp.success:
                 logger.error(f"Reset failed: {reset_resp.error}")
                 continue
