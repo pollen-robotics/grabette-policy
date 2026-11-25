@@ -251,6 +251,66 @@ def test_translation_gain_scales_positions_only(ev):
     assert grip1.goals == grip2.goals
 
 
+class FakeACT:
+    """ACT's contract: predict_action_chunk() returns the whole chunk, and
+    select_action() queues only its first n_action_steps (deque capped at that)."""
+
+    def __init__(self, chunks, n_action_steps):
+        self._chunks = list(chunks)
+        self._served = 0
+        self.config = SimpleNamespace(n_action_steps=n_action_steps)
+        self._action_queue = deque(maxlen=n_action_steps)
+
+    def predict_action_chunk(self, batch):
+        chunk = self._chunks[min(self._served, len(self._chunks) - 1)]
+        self._served += 1
+        return torch.from_numpy(np.asarray(chunk, np.float32)).unsqueeze(0)
+
+    def select_action(self, batch):
+        if not self._action_queue:
+            full = self.predict_action_chunk(batch)[:, :self.config.n_action_steps]
+            self._action_queue.extend(full.transpose(0, 1))
+        return self._action_queue.popleft()
+
+
+def test_commit_close_runs_a_closing_chunk_to_its_end(ev):
+    """With n_action_steps 3 of a 6-action chunk, a close starting at action 2
+    is cut by the replan at 3. --commit_close queues that chunk in full. A close
+    only in the tail (action 4) does not commit: ACT always plans one there, so
+    committing on it closes blind from the first image."""
+    n = 3
+
+    def chunks_with_close_at(i):
+        chunks = make_chunks(3, seed=7)
+        for c in chunks:
+            c[:, 6:8] = 0.1              # gripper open everywhere...
+        chunks[0][i, 7] = 0.9            # ...except one close in chunk 0
+        return chunks
+
+    def run(**kw):
+        arm, grip = FakeArm(), FakeGripper()
+        ev.run_episode(
+            policy=FakeACT(chunks, n), preprocessor=lambda b: b, postprocessor=lambda a: a,
+            arm_stub=arm, gripper_stub=grip, arm_pb2=fake_pb2(), gripper_pb2=fake_grip_pb2(),
+            camera=FakeCamera(), device=torch.device("cpu"),
+            max_steps=K + n, fps=500.0, success_check_freq=1000,
+            debug=False, use_relative_proprio=False,
+            start_pos=np.zeros(3), start_rot=Rotation.identity(), task="t",
+            chunk_relative=chunkrel.ChunkRelativeDeltas(), **kw)
+        return grip.goals
+
+    def want(rows):
+        return [tuple(float(v) for v in a[6:8]) for a in rows]
+
+    chunks = chunks_with_close_at(2)
+    assert np.allclose(run(), want([*chunks[0][:n], *chunks[1][:n], *chunks[2][:n]]))
+    assert np.allclose(run(commit_close=0.55), want([*chunks[0], *chunks[1][:n]]))
+
+    chunks = chunks_with_close_at(4)
+    assert np.allclose(run(commit_close=0.55),
+                       want([*chunks[0][:n], *chunks[1][:n], *chunks[2][:n]]))
+
+
 def test_chunk_relative_and_the_grasp_projection_together(ev):
     """The combination Steve actually runs, and the one nothing had exercised:
     the motion is converted from chunk offsets while the gripper channels are
