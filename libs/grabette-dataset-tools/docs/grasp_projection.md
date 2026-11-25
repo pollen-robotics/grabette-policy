@@ -115,8 +115,15 @@ None of this reaches the trained **checkpoint**, which keeps only
 
 ```bash
 uv run python -m grabette_dataset_tools.grasp_projection_convert \
-    --src <raw-dataset-root> --dst <converted-root> [--rest-is-closed]
+    --src_root <raw-dataset-root> --dst_root <converted-root> --repo_id local/<name> \
+    [--rest_is_closed] [--close_at 0.8 --close_stop_speed 0.03]
 ```
+
+`--close_at` / `--close_stop_speed` delay the full close to the grasp, for
+operators who close while still approaching; see
+[When the full close fires](#when-the-full-close-fires). Through the pipelines
+(`policies/ACT` and `policies/DiffusionPolicy`): `run_pipeline.sh …
+--grasp-projection [--rest-is-closed] [--close-at 0.8 --close-stop-speed 0.03]`.
 
 **Evaluate.** `evaluate.py --grasp_projection {auto,on,off}`. `auto` inspects the
 checkpoint's saved normaliser (`action.max[-2:] ≤ 1.0`) — channel *names* are not
@@ -125,6 +132,43 @@ unusable because a raw dataset's q99 (0.894) is also below 1. With `--policy_add
 there is no local checkpoint to inspect, so **pass `on` explicitly**; `auto` exits
 rather than guess, because guessing "raw" would send a closure of 1.0 as 1.0
 *radian* and under-close every grasp with nothing in the log to say so.
+
+## When the full close fires
+
+By default `c = 1` starts at the **onset** of the closing ramp, the moment the
+human commits. That suits operators who close in one quick squeeze once in place
+(the mustard data: a ~30-frame ramp after a flat approach). It does not suit
+operators who close **slowly while still approaching**. On
+`glannuzel/put-red-cube-in-green-box` (180 episodes, Nov. 2026) the onset came a
+median **0.77 s and 8.4 cm** before the hand stopped on the cube, at 0.20 m/s.
+The servo executes `c = 1` at its own speed, much faster than the hand, so the
+robot shut its fingers before reaching the cube.
+
+Two opt-in converter options move the full close to the grasp. The close fires at
+the **earliest** of the two:
+
+| option | fires when | why it is not enough alone |
+|---|---|---|
+| `--close_at F` | the observed closure has covered fraction `F` of its rise | some operators keep squeezing during transport, so 90 % can come after the lift |
+| `--close_stop_speed V` | the hand speed (5-frame average) drops below `V` m/s | 44 of 177 put-red-cube grasps never slow below 3 cm/s |
+
+Before the trigger, the action replays the human's own closure and strategy, so
+nothing is invented. The strategy is latched from the trigger on. A close that
+spans frame 0 (an idle hand under `--rest_is_closed`) is left alone. The values
+used are recorded in the sidecar as `close_trigger`.
+
+Measured on put-red-cube (onset of `c = 1` relative to the hand stopping; median
+and 10th–90th percentiles):
+
+| setting | lead on the stop | distance left | margin before the lift |
+|---|---|---|---|
+| default (ramp onset) | 0.77 s [0.43; 1.36] | 8.4 cm [2.7; 17.8] | 1.27 s |
+| `--close_at 0.8 --close_stop_speed 0.03` | 0.17 s [0.10; 0.30] | 0.4 cm [0.1; 0.9] | 0.40 s (1 % under 0.2 s) |
+
+Check the margin before the lift against the servo's closing time: if the arm
+lifts before the fingers have closed, lower `F` (0.65–0.7 adds about 1 cm of
+remaining travel). Through the pipelines: `run_pipeline.sh … --grasp-projection
+--close-at 0.8 --close-stop-speed 0.03`.
 
 ## Results on hardware
 
@@ -160,6 +204,10 @@ differentiated too: mustard ≈ 0.001, can ≈ 0.11, cup ≈ 0.27–0.29.
   torque-capped stall, not a hand-measured geometric stop.
 - **Segmentation depends on the recording convention.** `--rest-is-closed`
   changes what is detectable; see the recording procedure.
+- **By default the close fires at the ramp onset.** With operators who close
+  slowly while approaching, the robot closes before reaching the object. Convert
+  with `--close_at` / `--close_stop_speed`; see
+  [When the full close fires](#when-the-full-close-fires).
 
 ## Tests
 

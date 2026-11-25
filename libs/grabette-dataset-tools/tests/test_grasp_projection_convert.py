@@ -260,3 +260,172 @@ def test_dropping_provenance_is_a_no_op_when_absent(tmp_path):
     (root / "meta" / "stats.json").write_text(json.dumps(before))
     _drop_stale_action_stats(root)
     assert json.loads((root / "meta" / "stats.json").read_text()) == before
+
+
+# ── delaying the full close to the grasp (--close_at / --close_stop_speed) ──
+#
+# Some operators close SLOWLY while still approaching (put-red-cube, Nov. 2026:
+# ramp onset a median 0.77 s and 8.4 cm before the hand stopped). Firing c = 1 at
+# the ramp onset then shuts the robot's fingers before the object is between
+# them. These options move the full close to the grasp itself.
+
+FPS = 30.0
+
+
+def slow_close(rest_c=0.22, grasp_c=0.60, approach=40, ramp=40, hold=40, s0=0.10, s1=0.30):
+    """A slow, steady closing ramp (the hard case) with the strategy drifting
+    from s0 to s1 along it. Returns (prox, dist, c_path, ramp_start)."""
+    cs = ([rest_c] * approach
+          + [rest_c + (grasp_c - rest_c) * (i + 1) / ramp for i in range(ramp)]
+          + [grasp_c] * hold)
+    ss = ([s0] * approach
+          + [s0 + (s1 - s0) * (i + 1) / ramp for i in range(ramp)]
+          + [s1] * hold)
+    pairs = [GP.decode(s, c) for s, c in zip(ss, cs)]
+    return [p for p, _ in pairs], [d for _, d in pairs], cs, approach
+
+
+def moving_then_still(n, stop_at, speed=0.2):
+    """Hand positions: moving along x at `speed` m/s, motionless from `stop_at`."""
+    x, out = 0.0, []
+    for i in range(n):
+        if 0 < i < stop_at:
+            x += speed / FPS
+        out.append([x, 0.0, 0.0])
+    return out
+
+
+def first_full_close(action):
+    return next(i for i, c in enumerate(action[:, 1]) if c >= C_CLOSE)
+
+
+def test_by_default_the_full_close_still_fires_at_the_ramp_onset():
+    """The options are opt-in: existing datasets must convert exactly as before."""
+    prox, dist, _cs, start = slow_close()
+    action, _state, report = convert_episode(prox, dist, GP, rest_is_closed=False)
+    assert abs(first_full_close(action) - start) <= 2
+    assert report["close_delays"] == []
+
+
+def test_close_at_fires_once_the_human_has_covered_that_fraction_of_the_ramp():
+    prox, dist, _cs, start = slow_close()
+    action, state, report = convert_episode(prox, dist, GP, rest_is_closed=False,
+                                            close_at=0.8)
+    # The fraction is measured from the closure at the (undelayed) ramp onset.
+    onset = first_full_close(convert_episode(prox, dist, GP, rest_is_closed=False)[0])
+    lo = state[onset, 1]
+    hi = state[:, 1].max()
+    expected = next(i for i in range(onset, len(state))
+                    if state[i, 1] >= lo + 0.8 * (hi - lo))
+    trigger = first_full_close(action)
+    assert abs(trigger - expected) <= 2
+    assert trigger > start + 20, "the full close must move well past the ramp onset"
+    assert len(report["close_delays"]) == 1
+
+
+def test_before_the_delayed_close_the_action_replays_the_human_closure():
+    """Between the ramp onset and the trigger nothing is invented: the robot is
+    taught the human's own gradual squeeze, strategy included."""
+    prox, dist, _cs, _start = slow_close()
+    action, state, _report = convert_episode(prox, dist, GP, rest_is_closed=False,
+                                             close_at=0.8)
+    trigger = first_full_close(action)
+    assert action[:trigger, 1] == pytest.approx(state[:trigger, 1], abs=1e-6)
+    assert action[:trigger, 0] == pytest.approx(state[:trigger, 0], abs=1e-6)
+
+
+def test_the_strategy_is_latched_from_the_delayed_close_on():
+    prox, dist, _cs, _start = slow_close()
+    action, _state, _report = convert_episode(prox, dist, GP, rest_is_closed=False,
+                                              close_at=0.8)
+    trigger = first_full_close(action)
+    latched = action[trigger:, 0][action[trigger:, 1] >= C_CLOSE]
+    assert len(set(latched.round(6).tolist())) == 1, "one grasp, one shape"
+    assert latched[0] == pytest.approx(0.30, abs=0.02)
+
+
+def test_the_hand_stopping_fires_the_close_when_it_comes_first():
+    prox, dist, _cs, start = slow_close()
+    stop_at = start + 15                       # well before 80 % of the ramp
+    pos = moving_then_still(len(prox), stop_at)
+    action, _state, _report = convert_episode(prox, dist, GP, rest_is_closed=False,
+                                              close_at=0.8, stop_speed=0.03,
+                                              pos=pos, fps=FPS)
+    trigger = first_full_close(action)
+    # The 5-frame smoothing lets the speed fall below 0.03 m/s a couple of
+    # frames after the actual stop.
+    assert stop_at <= trigger <= stop_at + 3
+
+
+def test_whichever_comes_first_wins_when_the_hand_never_stops():
+    """Some hands never pause on the object: the fraction must still fire."""
+    prox, dist, _cs, _start = slow_close()
+    pos = moving_then_still(len(prox), stop_at=len(prox))   # never stops
+    with_stop = convert_episode(prox, dist, GP, rest_is_closed=False, close_at=0.8,
+                                stop_speed=0.03, pos=pos, fps=FPS)[0]
+    without = convert_episode(prox, dist, GP, rest_is_closed=False, close_at=0.8)[0]
+    assert first_full_close(with_stop) == first_full_close(without)
+
+
+def test_an_idle_close_at_the_start_is_not_delayed():
+    """Rest-closed: the close spanning frame 0 has no ramp. Only the close that
+    follows the deliberate open is moved."""
+    cs = [0.55] * 40 + [0.05] * 30 + [0.05 + 0.5 * (i + 1) / 30 for i in range(30)] + [0.55] * 40
+    pairs = [GP.decode(0.15, c) for c in cs]
+    prox = [p for p, _ in pairs]
+    dist = [d for _, d in pairs]
+    action, _state, report = convert_episode(prox, dist, GP, rest_is_closed=True,
+                                             close_at=0.8)
+    assert action[0, 1] == pytest.approx(1.0)
+    assert len(report["close_delays"]) == 1
+    assert action[75, 1] < C_CLOSE, "mid-ramp after the open: not yet a full close"
+    assert action[-1, 1] == pytest.approx(1.0)
+
+
+def test_stop_speed_without_positions_is_refused():
+    prox, dist, _cs, _start = slow_close()
+    with pytest.raises(ValueError, match="positions"):
+        convert_episode(prox, dist, GP, rest_is_closed=False, stop_speed=0.03)
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.1, 1.5])
+def test_a_close_fraction_outside_0_1_is_refused(bad):
+    prox, dist, _cs, _start = slow_close()
+    with pytest.raises(ValueError, match="close_at"):
+        convert_episode(prox, dist, GP, rest_is_closed=False, close_at=bad)
+
+
+def test_hand_speed_has_no_bias_at_the_ends_of_the_episode():
+    """A zero-padded average would read the last frames as "stopped"."""
+    from grabette_dataset_tools.grasp_projection_convert import hand_speed
+
+    pos = [[0.2 * i / FPS, 0.0, 0.0] for i in range(20)]
+    assert hand_speed(pos, FPS) == pytest.approx([0.2] * 20)
+
+
+@pytest.mark.parametrize("names, expected", [
+    (["x", "y", "z", "ax", "ay", "az", "proximal", "distal"], ([0, 1, 2], False)),
+    (["right_x", "right_y", "right_z", "right_ax", "right_ay", "right_az",
+      "right_proximal", "right_distal"], ([0, 1, 2], False)),
+    (["dx", "dy", "dz"] + [f"dr6d_{i}" for i in range(6)] + ["proximal", "distal"],
+     ([0, 1, 2], True)),
+    (["proximal", "distal"], None),
+    (None, None),
+])
+def test_position_channels_are_found_by_name(names, expected):
+    from grabette_dataset_tools.grasp_projection_convert import _pose_columns
+
+    assert _pose_columns(names) == expected
+
+
+def test_the_sidecar_records_when_the_close_fires(tmp_path):
+    from grabette_dataset_tools.grasp_projection import PROJECTION_SIDECAR
+    from grabette_dataset_tools.grasp_projection_convert import _write_sidecar
+
+    root = tmp_path / "ds"
+    (root / "meta").mkdir(parents=True)
+    _write_sidecar(root, GP, tmp_path / "src",
+                   close_trigger={"close_at": 0.8, "stop_speed_m_s": 0.03})
+    meta = json.loads((root / PROJECTION_SIDECAR).read_text())
+    assert meta["close_trigger"] == {"close_at": 0.8, "stop_speed_m_s": 0.03}
+    assert GP.matches_metadata(meta) is None, "the extra key must not break the guard"

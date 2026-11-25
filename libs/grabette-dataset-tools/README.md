@@ -21,6 +21,12 @@ and [`docs/grasp_projection_recording_procedure.md`](docs/grasp_projection_recor
 uv run python -m grabette_dataset_tools.grasp_projection_convert --help
 ```
 
+**Robot closing too early?** By default the full close fires at the onset of the
+human's closing ramp. If the operators closed slowly while still approaching,
+convert with `--close_at 0.8 --close_stop_speed 0.03`: the full close then fires
+when the hand reaches the object. See
+[When the full close fires](docs/grasp_projection.md#when-the-full-close-fires).
+
 `grabette_dataset_tools.grasp_projection` reads the joint limits from
 `gripette.config` (the gripper's own package, in the
 [grabette](https://github.com/pollen-robotics/grabette) repo), so the converter
