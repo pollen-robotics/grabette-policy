@@ -33,7 +33,7 @@ import click
 import numpy as np
 import pandas as pd
 
-from grabette_dataset_tools.grasp_projection_convert import _gripper_columns
+from grabette_dataset_tools.grasp_projection_convert import _gripper_pairs
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +128,11 @@ def add_gripper_state(root: Path, repo_id: str, output_root: Path) -> Path:
 
     names = info["features"]["action"].get("names")
     dim = int(info["features"]["action"]["shape"][0])
-    ip, idl = _gripper_columns(names, dim)
-    logger.info("  gripper columns in action: %s -> observation.state", (ip, idl))
+    pairs = _gripper_pairs(names, dim)
+    cols = [c for _, ip, idl in pairs for c in (ip, idl)]
+    # One gripper keeps the historical unprefixed names; bimanual keeps the sides.
+    state_names = STATE_NAMES if len(pairs) == 1 else [names[c] for c in cols]
+    logger.info("  gripper columns in action: %s -> observation.state %s", cols, state_names)
 
     # Derive the state from each ROW's own action rather than from a
     # pre-assembled array. modify_features passes the row dict to a callable, so
@@ -139,20 +142,19 @@ def add_gripper_state(root: Path, repo_id: str, output_root: Path) -> Path:
     # it assigns straight into a DataFrame column.)
     def state_of_row(row, _ep_idx, _frame_in_ep):
         a = np.asarray(row["action"], dtype=np.float32)
-        return np.array([a[ip], a[idl]], dtype=np.float32)
+        return a[cols].astype(np.float32)
 
     sample = pd.read_parquet(
         sorted((root / "data").rglob("*.parquet"))[0], columns=["action"])
     arr = np.stack(sample["action"].to_numpy()).astype(np.float32)
-    logger.info("  state range prox [%.3f, %.3f] dist [%.3f, %.3f] (first file)",
-                arr[:, ip].min(), arr[:, ip].max(),
-                arr[:, idl].min(), arr[:, idl].max())
+    for name, c in zip(state_names, cols):
+        logger.info("  state range %s [%.3f, %.3f] (first file)", name, arr[:, c].min(), arr[:, c].max())
 
     ds = LeRobotDataset(repo_id, root=root)
     out = modify_features(
         ds,
         add_features={"observation.state": (
-            state_of_row, {"dtype": "float32", "shape": [2], "names": STATE_NAMES})},
+            state_of_row, {"dtype": "float32", "shape": [len(cols)], "names": state_names})},
         output_dir=output_root,
         repo_id=repo_id,
     )

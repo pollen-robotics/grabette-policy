@@ -169,7 +169,8 @@ def _check_gripper_channels(src, info, status):
                 "'the last two', which cannot tell radians from a normalised closure"
             )
             continue
-        last2 = tuple(str(n).lower() for n in names[-2:])
+        # Bimanual channels carry a side prefix: right_strategy, right_closure.
+        last2 = tuple(re.sub(r"^(left|right)_", "", str(n).lower()) for n in names[-2:])
         if last2 == PROJECTED_GRIPPER:
             projected = True
             _check_unit_range(src, key, status)

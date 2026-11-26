@@ -276,6 +276,22 @@ def compute_relative_to_start_state(poses_11d: np.ndarray, episode_indices: np.n
     return relative_state
 
 
+def arm_blocks(names: list[str] | None, dim: int) -> list[tuple[str, list[int]]]:
+    """(name prefix, 8 action columns) per arm.
+
+    Bimanual captures concatenate one raw 8D block per arm, named
+    `left_x .. left_distal, right_x .. right_distal`. Each block is converted on
+    its own and the results concatenated in the same order. Anything else is a
+    single arm: one unprefixed block holding every column, as before.
+    """
+    raw = ["x", "y", "z", "ax", "ay", "az", "proximal", "distal"]
+    names = [str(n) for n in names or []]
+    prefixes = [n[: -len("proximal")] for n in names if n.endswith("proximal")]
+    if len(prefixes) > 1 and all(p + r in names for p in prefixes for r in raw):
+        return [(p, [names.index(p + r) for r in raw]) for p in prefixes]
+    return [("", list(range(dim)))]
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Convert Grabette dataset for training")
     parser.add_argument(
@@ -441,70 +457,88 @@ def main():
     parquet_files = sorted(data_dir.rglob("*.parquet"))
     logger.info(f"Processing {len(parquet_files)} parquet file(s)...")
 
+    blocks = arm_blocks(ds.meta.features["action"].get("names"), ds.meta.features["action"]["shape"][0])
+    if len(blocks) > 1:
+        logger.info(f"Arms: {[p.rstrip('_') for p, _ in blocks]} (each 8D block converted on its own)")
+    action_names = [p + n for p, _ in blocks for n in ACTION_NAMES]
+    state_names = [p + n for p, _ in blocks for n in state_names]
+    state_dim = len(state_names)
+
     for pf in parquet_files:
         table = pq.read_table(pf)
 
         # Read the original action column (= absolute pose at each frame)
         action_col = table.column("action")
-        poses_raw = np.array(action_col.to_pylist(), dtype=np.float32)
-
-        # Convert to 11D if still 8D
-        if poses_raw.shape[1] == 8:
-            poses_11d = pose_8d_to_11d(poses_raw)
-            logger.info(f"  {pf.name}: converted rotation 8D -> 11D")
-        elif poses_raw.shape[1] == 11:
-            # Check if this is already deltas or still absolute
-            pos_mean = np.abs(poses_raw[:, :3].mean(axis=0))
-            if np.all(pos_mean < 0.01):
-                logger.warning(f"  {pf.name}: appears to already be deltas, re-run on original data")
-                continue
-            poses_11d = poses_raw
-        else:
-            raise ValueError(f"Unexpected action dim: {poses_raw.shape[1]}")
+        all_poses_raw = np.array(action_col.to_pylist(), dtype=np.float32)
 
         # Episode indices
         episode_indices = np.array(table.column("episode_index").to_pylist())
 
-        # Optional pose smoothing before differencing (see smooth_poses_11d).
-        if args.smooth_poses > 0:
-            poses_11d = smooth_poses_11d(poses_11d, episode_indices, args.smooth_poses)
+        arm_actions, arm_states = [], []
+        for prefix, cols in blocks:
+            poses_raw = all_poses_raw[:, cols]
+            label = f"{pf.name}{' ' + prefix.rstrip('_') if prefix else ''}"
 
-        # Compute delta actions
-        delta_actions = compute_delta_actions(poses_11d, episode_indices)
-        logger.info(
-            f"  {pf.name}: delta actions "
-            f"(mean pos delta: {np.linalg.norm(delta_actions[:, :3], axis=1).mean() * 1000:.2f} mm)"
-        )
+            # Convert to 11D if still 8D
+            if poses_raw.shape[1] == 8:
+                poses_11d = pose_8d_to_11d(poses_raw)
+                logger.info(f"  {label}: converted rotation 8D -> 11D")
+            elif poses_raw.shape[1] == 11:
+                # Check if this is already deltas or still absolute
+                pos_mean = np.abs(poses_raw[:, :3].mean(axis=0))
+                if np.all(pos_mean < 0.01):
+                    logger.warning(f"  {label}: appears to already be deltas, re-run on original data")
+                    break
+                poses_11d = poses_raw
+            else:
+                raise ValueError(f"Unexpected action dim: {poses_raw.shape[1]}")
 
-        # --- Replace per-step outlier deltas with a hold (SLAM tracking glitches) ---
-        # A single glitch frame yields one impossibly-large delta (a
-        # relocalization "step" — the offset cancels in every OTHER delta) or
-        # two (a "return" spike). Since we train on deltas, replacing the
-        # outlier with HOLD_DELTA = "hold for that frame" removes the bad action
-        # with no side effect on the rest of the trajectory. Episodes with
-        # segments too long to absorb this way are dropped upstream by
-        # clean_dataset.py (same --despike_max_* thresholds).
-        if not args.no_despike:
-            dpos_mm = np.linalg.norm(delta_actions[:, :3], axis=1) * 1000.0
-            r6d = delta_actions[:, 3:9]
-            Rd = rotation_6d_to_rotation_matrix_numpy(r6d)
-            cos = np.clip((np.trace(Rd, axis1=1, axis2=2) - 1.0) / 2.0, -1.0, 1.0)
-            ang_deg = np.degrees(np.arccos(cos))
-            # Episode-boundary holds are the identity, so they measure 0° here.
-            bad = (dpos_mm > args.despike_max_mm) | (ang_deg > args.despike_max_deg)
-            if bad.any():
-                delta_actions[bad, :9] = HOLD_DELTA
-                logger.info(
-                    f"  {pf.name}: replaced {int(bad.sum())} outlier delta(s) with a hold "
-                    f"(>{args.despike_max_mm:.0f}mm or >{args.despike_max_deg:.0f}°)"
-                )
+            # Optional pose smoothing before differencing (see smooth_poses_11d).
+            if args.smooth_poses > 0:
+                poses_11d = smooth_poses_11d(poses_11d, episode_indices, args.smooth_poses)
 
-        # Compute observation state
-        if use_relative:
-            obs_state = compute_relative_to_start_state(poses_11d, episode_indices)
-            logger.info(f"  {pf.name}: computed relative-to-start state (11D)")
-        else:
-            obs_state = poses_11d[:, 9:]  # gripper only (2D)
+            # Compute delta actions
+            delta_actions = compute_delta_actions(poses_11d, episode_indices)
+            logger.info(
+                f"  {label}: delta actions "
+                f"(mean pos delta: {np.linalg.norm(delta_actions[:, :3], axis=1).mean() * 1000:.2f} mm)"
+            )
+
+            # --- Replace per-step outlier deltas with a hold (SLAM tracking glitches) ---
+            # A single glitch frame yields one impossibly-large delta (a
+            # relocalization "step" — the offset cancels in every OTHER delta) or
+            # two (a "return" spike). Since we train on deltas, replacing the
+            # outlier with HOLD_DELTA = "hold for that frame" removes the bad action
+            # with no side effect on the rest of the trajectory. Episodes with
+            # segments too long to absorb this way are dropped upstream by
+            # clean_dataset.py (same --despike_max_* thresholds).
+            if not args.no_despike:
+                dpos_mm = np.linalg.norm(delta_actions[:, :3], axis=1) * 1000.0
+                r6d = delta_actions[:, 3:9]
+                Rd = rotation_6d_to_rotation_matrix_numpy(r6d)
+                cos = np.clip((np.trace(Rd, axis1=1, axis2=2) - 1.0) / 2.0, -1.0, 1.0)
+                ang_deg = np.degrees(np.arccos(cos))
+                # Episode-boundary holds are the identity, so they measure 0° here.
+                bad = (dpos_mm > args.despike_max_mm) | (ang_deg > args.despike_max_deg)
+                if bad.any():
+                    delta_actions[bad, :9] = HOLD_DELTA
+                    logger.info(
+                        f"  {label}: replaced {int(bad.sum())} outlier delta(s) with a hold "
+                        f"(>{args.despike_max_mm:.0f}mm or >{args.despike_max_deg:.0f}°)"
+                    )
+
+            # Compute observation state
+            if use_relative:
+                obs_state = compute_relative_to_start_state(poses_11d, episode_indices)
+                logger.info(f"  {label}: computed relative-to-start state (11D)")
+            else:
+                obs_state = poses_11d[:, 9:]  # gripper only (2D)
+            arm_actions.append(delta_actions)
+            arm_states.append(obs_state)
+        if len(arm_actions) < len(blocks):
+            continue
+        delta_actions = np.concatenate(arm_actions, axis=1)
+        obs_state = np.concatenate(arm_states, axis=1)
 
         # Rebuild table
         df_dict = {}
@@ -528,7 +562,7 @@ def main():
     with open(info_path) as f:
         info = json.load(f)
 
-    info["features"]["action"] = {"dtype": "float32", "shape": [11], "names": ACTION_NAMES}
+    info["features"]["action"] = {"dtype": "float32", "shape": [len(action_names)], "names": action_names}
     info["features"]["observation.state"] = {
         "dtype": "float32",
         "shape": [state_dim],
@@ -538,7 +572,8 @@ def main():
     with open(info_path, "w") as f:
         json.dump(info, f, indent=4)
     logger.info(
-        f"Updated info.json: action=11D (deltas), observation.state={state_dim}D ({args.proprioception})"
+        f"Updated info.json: action={len(action_names)}D (deltas), "
+        f"observation.state={state_dim}D ({args.proprioception})"
     )
 
     # --- 3. Recompute stats ---
@@ -571,8 +606,8 @@ def main():
         logger.info(f"    {n:12s}: {v:+.6f}")
 
     action = sample["action"].tolist()
-    logger.info("  action (11D):")
-    for n, v in zip(ACTION_NAMES, action, strict=True):
+    logger.info(f"  action ({len(action_names)}D):")
+    for n, v in zip(action_names, action, strict=True):
         logger.info(f"    {n:8s}: {v:+.6f}")
 
     if use_relative:

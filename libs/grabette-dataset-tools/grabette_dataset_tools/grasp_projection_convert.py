@@ -116,6 +116,21 @@ def _gripper_columns(names: list[str] | None, dim: int) -> tuple[int, int]:
     return dim - 2, dim - 1
 
 
+def _gripper_pairs(names: list[str] | None, dim: int) -> list[tuple[str, int, int]]:
+    """(name prefix, proximal, distal) per arm.
+
+    Bimanual layouts carry one `<side>_proximal`/`<side>_distal` pair per arm;
+    every other layout is one unprefixed pair, located by `_gripper_columns`.
+    """
+    names = [str(n) for n in names or []]
+    pairs = [(n[: -len("proximal")], i, names.index(n[: -len("proximal")] + "distal"))
+             for i, n in enumerate(names)
+             if n.endswith("proximal") and n[: -len("proximal")] + "distal" in names]
+    if len(pairs) > 1:
+        return pairs
+    return [("", *_gripper_columns(names, dim))]
+
+
 def convert_episode(
     prox: list[float],
     dist: list[float],
@@ -307,9 +322,11 @@ def convert_dataset(
     a_dim = int(info["features"]["action"]["shape"][0])
     s_names = info["features"]["observation.state"].get("names")
     s_dim = int(info["features"]["observation.state"]["shape"][0])
-    a_ip, a_id = _gripper_columns(a_names, a_dim)
-    s_ip, s_id = _gripper_columns(s_names, s_dim)
-    logger.info("action gripper cols %s, state gripper cols %s", (a_ip, a_id), (s_ip, s_id))
+    a_pairs = _gripper_pairs(a_names, a_dim)
+    s_pairs = _gripper_pairs(s_names, s_dim)
+    if len(a_pairs) != len(s_pairs):
+        raise ValueError(f"{len(a_pairs)} gripper(s) in action but {len(s_pairs)} in observation.state")
+    logger.info("action gripper cols %s, state gripper cols %s", a_pairs, s_pairs)
 
     gp = GraspProjection()
     reports = []
@@ -321,13 +338,14 @@ def convert_dataset(
 
         for ep in np.unique(eps):
             m = eps == ep
-            a_pair, s_pair, rep = convert_episode(
-                actions[m, a_ip].tolist(), actions[m, a_id].tolist(), gp, rest_is_closed
-            )
-            actions[m, a_ip], actions[m, a_id] = a_pair[:, 0], a_pair[:, 1]
-            states[m, s_ip], states[m, s_id] = s_pair[:, 0], s_pair[:, 1]
-            rep["episode"] = int(ep)
-            reports.append(rep)
+            for (prefix, a_ip, a_id), (_, s_ip, s_id) in zip(a_pairs, s_pairs):
+                a_pair, s_pair, rep = convert_episode(
+                    actions[m, a_ip].tolist(), actions[m, a_id].tolist(), gp, rest_is_closed
+                )
+                actions[m, a_ip], actions[m, a_id] = a_pair[:, 0], a_pair[:, 1]
+                states[m, s_ip], states[m, s_id] = s_pair[:, 0], s_pair[:, 1]
+                rep["episode"], rep["arm"] = int(ep), prefix.rstrip("_")
+                reports.append(rep)
 
         cols = {}
         for c in table.column_names:
@@ -342,15 +360,16 @@ def convert_dataset(
 
     # Rename the two channels so the new meaning is visible in the metadata
     # rather than implied. Shapes are unchanged.
-    def _renamed(names, ip, idl):
+    def _renamed(names, pairs):
         out = list(names)
-        out[ip], out[idl] = "strategy", "closure"
+        for prefix, ip, idl in pairs:
+            out[ip], out[idl] = prefix + "strategy", prefix + "closure"
         return out
 
     if a_names:
-        info["features"]["action"]["names"] = _renamed(a_names, a_ip, a_id)
+        info["features"]["action"]["names"] = _renamed(a_names, a_pairs)
     if s_names:
-        info["features"]["observation.state"]["names"] = _renamed(s_names, s_ip, s_id)
+        info["features"]["observation.state"]["names"] = _renamed(s_names, s_pairs)
     info_path.write_text(json.dumps(info, indent=4))
     logger.info("Updated %s", info_path)
 

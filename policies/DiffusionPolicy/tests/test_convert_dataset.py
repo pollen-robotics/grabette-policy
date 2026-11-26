@@ -7,11 +7,12 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 from scipy.spatial.transform import Rotation
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from convert_dataset import HOLD_DELTA, compute_delta_actions  # noqa: E402
+from convert_dataset import HOLD_DELTA, arm_blocks, compute_delta_actions  # noqa: E402
 from rotation import rotation_6d_to_rotation_matrix_numpy, rotvec_to_rotation_6d  # noqa: E402
 
 
@@ -47,3 +48,17 @@ def test_interior_deltas_unchanged():
         R = rotation_6d_to_rotation_matrix_numpy(actions[i, 3:9])
         np.testing.assert_allclose(Rotation.from_matrix(R).magnitude(), np.radians(1.0), atol=1e-5)
     np.testing.assert_allclose(actions[:, 9:], 0.3)
+
+
+_ARM = ["x", "y", "z", "ax", "ay", "az", "proximal", "distal"]
+
+
+@pytest.mark.parametrize("names, expected", [
+    ([f"left_{n}" for n in _ARM] + [f"right_{n}" for n in _ARM],
+     [("left_", list(range(8))), ("right_", list(range(8, 16)))]),
+    (_ARM, [("", list(range(8)))]),
+    ([f"right_{n}" for n in _ARM], [("", list(range(8)))]),
+    (None, [("", list(range(8)))]),
+])
+def test_each_arm_is_converted_from_its_own_8d_block(names, expected):
+    assert arm_blocks(names, 8 if names is None else len(names)) == expected

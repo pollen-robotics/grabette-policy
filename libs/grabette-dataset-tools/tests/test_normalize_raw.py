@@ -120,6 +120,21 @@ def test_strip_prefix_is_needed_for_channel_lookup(ds):
     assert _gripper_columns(info["features"]["action"]["names"], 8) == (6, 7)
 
 
+_ARM = ["x", "y", "z", "ax", "ay", "az", "proximal", "distal"]
+
+
+@pytest.mark.parametrize("names, expected", [
+    ([f"left_{n}" for n in _ARM] + [f"right_{n}" for n in _ARM], [("left_", 6, 7), ("right_", 14, 15)]),
+    ([f"right_{n}" for n in _ARM], [("", 6, 7)]),
+    (_ARM, [("", 6, 7)]),
+    (None, [("", 6, 7)]),
+])
+def test_gripper_pairs_one_per_arm(names, expected):
+    from grabette_dataset_tools.grasp_projection_convert import _gripper_pairs
+
+    assert _gripper_pairs(names, 8 if names is None else len(names)) == expected
+
+
 def test_strip_prefix_leaves_non_matching_names_alone(ds):
     strip_name_prefix(ds, "left_", ("action",))
     info = json.loads((ds / "meta" / "info.json").read_text())

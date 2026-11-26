@@ -115,7 +115,8 @@ def audit(repo_id: str, root, cfg) -> list[int]:
             "Rebuild it with the postprocess scripts/pipeline/generate_dataset.py first."
         )
     hf = ds.hf_dataset.select_columns(["is_lost", "episode_index"])
-    il = np.asarray(hf["is_lost"], dtype=np.float32).reshape(-1)
+    # Bimanual captures carry one flag per arm: a frame is lost if any arm is.
+    il = np.asarray(hf["is_lost"], dtype=np.float32).reshape(len(hf), -1).max(axis=1)
     ep = np.asarray(hf["episode_index"])
     eps = np.unique(ep)
 
